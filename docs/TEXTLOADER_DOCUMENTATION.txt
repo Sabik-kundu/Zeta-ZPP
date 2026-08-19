@@ -1,0 +1,184 @@
+ZETA TEXTLOADER — COMPLETE TECHNICAL REFERENCE
+=============================================
+
+Overview:
+TextLoader is a robust, cross-platform library for loading, editing, searching, and saving text data. It is optimized for CLI environments (Node.js/Zeta++) but maintains compatibility with the browser.
+
+ENVIRONMENT SUPPORT
+------------------
+- Node.js: Uses 'fs' for synchronous file I/O.
+- Zeta++: Integrates via DSALibraries ('textloader.zl').
+- Browser: Supports in-memory processing and file downloads.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 1 — LOADING & CACHING
+─────────────────────────────────────────────────────────────────────────────
+
+- text.load(path)
+  Loads a file synchronously from the disk. Caches content automatically.
+  Example:
+  const config = text.load("server.conf");
+
+- text.loadLines(path)
+  Loads a file and returns it as an array of lines, removing any trailing newline.
+  Example:
+  const lines = text.loadLines("users.csv");
+
+- text.fromString(str)
+  Wraps a raw string in the TextLoader context for in-memory manipulation.
+
+- text.cached(path)
+  Retrieves content from the internal cache without repeating disk I/O.
+
+- text.clearCache(path?)
+  Clears specific entry or the entire cache if no path is provided.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 2 — CORE EDITING
+─────────────────────────────────────────────────────────────────────────────
+
+- text.replace(content, from, to)
+  Global replacement of strings or RegEx.
+  Example:
+  let updated = text.replace(doc, "v1.0", "v2.0");
+
+- text.insert(content, position, string)
+  Inserts text at a specific index. Supports negative indices (from end).
+  Example:
+  let doc = text.insert(original, -1, "\nEOF");
+
+- text.remove(content, start, end)
+  Deletes a range of characters.
+  Example:
+  let cleaned = text.remove(doc, 0, 10); // Remove header
+
+- text.trim(content, mode)
+  Removes whitespace. Modes: 'start', 'end', or 'both' (default).
+
+- text.upper / text.lower / text.capitalize
+  Case transformations for the entire content block.
+
+- text.reverse(content)
+  Reverses the entire string.
+
+- text.wrap(content, width)
+  Smart word-wrapping to ensure lines stay within specified column width.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 3 — LINE-BASED OPERATIONS
+─────────────────────────────────────────────────────────────────────────────
+
+- text.lines(content)
+  Splits content into an array, accurately handling \r\n, \r, and \n.
+
+- text.getLine(content, n)
+  Returns the nth line (0-indexed). Supports negative indices.
+
+- text.setLine(content, n, newLine)
+  Replaces a specific line within the content block.
+
+- text.filterLines(content, fn)
+  Functional filtering. Useful for removing comments or empty rows.
+  Example:
+  let noComments = text.filterLines(doc, l => !l.startsWith("#"));
+
+- text.sortLines(content, direction)
+  Alphabetical sorting. Direction: 'asc' or 'desc'.
+
+- text.uniqueLines(content)
+  Removes duplicates while preserving original order of first occurrence.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 4 — SEARCHING & ANALYSIS
+─────────────────────────────────────────────────────────────────────────────
+
+- text.search(content, query)
+  Returns detailed match objects: { index, line, col, match }.
+  Supports RegExp with global flags.
+
+- text.contains(content, query)
+  Boolean check for existence of a substring or pattern.
+
+- text.count(content, query)
+  Returns total number of occurrences.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 5 — EXTRACTION & SLICING
+─────────────────────────────────────────────────────────────────────────────
+
+- text.between(content, startMarker, endMarker)
+  Extracts first string found between two delimiters.
+  Example:
+  let body = text.between(html, "<body>", "</body>");
+
+- text.extract(content, pattern)
+  Returns an array of strings matching a specific Regular Expression.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 6 — INFO & STATISTICS
+─────────────────────────────────────────────────────────────────────────────
+
+- text.info(content)
+  Comprehensive metadata: { chars, lines, words, sentences, paragraphs, bytes }.
+
+- text.wordCount / text.lineCount / text.charCount
+  Specialized atomic counters.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 7 — FORMATTING HELPERS
+─────────────────────────────────────────────────────────────────────────────
+
+- text.indent(content, spaces)
+  Adds leading spaces to every line in the block.
+
+- text.dedent(content)
+  Removes common leading indentation from all lines.
+
+- text.repeat(content, n)
+  Repeats the entire block n times.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 8 — SAVING & EXPORTING
+─────────────────────────────────────────────────────────────────────────────
+
+- text.save(path, content)
+  Saves content to disk. Recursively creates directories if needed (Node.js).
+  In Browser, triggers a download if no native API is detected.
+
+- text.saveAs(content, filename)
+  Helper to export the current memory state to a new named file.
+
+─────────────────────────────────────────────────────────────────────────────
+SECTION 9 — FORMAT CONVERSION
+─────────────────────────────────────────────────────────────────────────────
+
+- text.parseCSV(content, separator)
+  Parses string into a 2D Array [row][cell].
+
+- text.toCSV(table, separator)
+  Converts 2D Array back to CSV formatted string.
+
+- text.parseJSON(content) / text.toJSON(obj, pretty)
+  High-level JSON serialization with error handling.
+
+─────────────────────────────────────────────────────────────────────────────
+FULL CLI WORKFLOW EXAMPLE
+─────────────────────────────────────────────────────────────────────────────
+const text = require('./textloader.js');
+
+// 1. Load and clean log file
+let log = text.load("server.log");
+log = text.filterLines(log, l => !l.includes("DEBUG"));
+log = text.uniqueLines(log);
+
+// 2. Perform analysis
+const stats = text.info(log);
+console.log(`Summary: ${stats.lines} events processed.`);
+
+// 3. Transform for report
+let report = text.upper(log);
+report = text.prepend(report, "DAILY STATUS REPORT\n===================\n");
+report = text.append(report, "\nGenerated by Zeta++ Engine.");
+
+// 4. Save to disk
+text.save("reports/daily.txt", report);

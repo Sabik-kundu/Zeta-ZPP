@@ -1,0 +1,472 @@
+==================================================================================
+ ADVGUI.ZL  —  DOCUMENTATION
+ Extension library for gui.zl (custom language)
+ File: advgui.js   |   Imported in-language as: advgui.zl
+==================================================================================
+
+OVERVIEW
+--------
+advgui.zl does NOT replace gui.zl. It sits on top of it. Import gui.zl first
+(Window, Scene, Button, Label, TextField, Canvas, Screen, Camera, Panel, ...),
+then import advgui.zl for everything else: real background images, advanced
+widgets, animation/effects, a virtual filesystem with drives, a simulated OS
+(desktop + taskbar + CLI), internet access, image processing, and 2D / pseudo-3D
+game helpers.
+
+Every function and every global this library injects into your language starts
+with the prefix "advgui_" so it can never collide with gui.zl's own names
+(Window, Button, createLabel, etc). All functions return a "view" object unless
+otherwise noted. A view is a plain object shaped like:
+
+  {
+    __type__     : 'view',
+    __viewKind__ : '<kind string, e.g. "slider", "modal", "cli">',
+    __el__       : <the underlying DOM element, or null>,
+    __children__ : [...],
+    x, y, width, height : numbers,
+    ...plus whatever getters/setters that widget defines...
+  }
+
+Most setter-style methods are chainable — they return the view itself
+(v.setValue(5).setPosition(10,10)), matching gui.zl's own convention.
+
+Environment note: advgui.zl is written for the SAME runtime as gui.zl's browser
+mode (a real DOM — browser page or Electron renderer). If it is ever loaded in
+a plain Node/CLI process (no `window`/`document`), it automatically falls back
+to inert stub versions of every function so your program will not crash — but
+nothing will actually render. Full functionality requires the browser/Electron
+renderer, exactly like gui.zl.
+
+==================================================================================
+ SECTION 1 — IMAGE BACKGROUNDS
+==================================================================================
+
+advgui_setBackgroundImage(target, src, opts)
+  Properly sets a background image on any view that has a __body__ (Window) or
+  __el__ (Panel, Scene, custom element). This is the fixed replacement for
+  gui.zl's Window.loadImage(), which is broken (it writes a trailing semicolon
+  into the CSS value, so the browser silently ignores it and no image shows).
+  Preloads the image first; only applies the background once it has actually
+  loaded, so you never see a blank flash or a broken image.
+
+  target : a view object (Window, Panel, Scene, ...) OR a raw DOM element.
+  src    : string URL or data-URI of the image.
+  opts   : optional object:
+     fit      - 'cover' (default) | 'contain' | 'fill' | 'auto'
+     position - CSS background-position string, default 'center'
+     blur     - number, pixels of CSS blur to apply on top of the image
+     dim      - number 0..1, darkens the image (useful for text overlays)
+     fallback - CSS color to show behind the image while/if it fails
+     onLoad   - function(target) called once the image is applied
+     onError  - function(target) called if the image fails to load
+  Returns: target (also auto-attaches target.setBackgroundImage(src, opts) so
+  you can call it again directly on that same view afterward).
+
+  Example:
+    var win = Window(500, 350);
+    advgui_setBackgroundImage(win, "https://example.com/bg.jpg", { fit: "cover", dim: 0.4 });
+    // or, after the first call:
+    win.setBackgroundImage("other.png", { fit: "contain" });
+
+advgui_extend(view)
+  Pre-attaches .setBackgroundImage(), .animate(), .addEffect(), .fadeIn(),
+  .fadeOut() directly onto any existing gui.zl view (Window/Panel/Scene/etc)
+  so you can call them as methods without going through the advgui_ function
+  form. Returns the same view (mutated in place).
+
+  Example:
+    var win = advgui_extend(Window(400,300));
+    win.setBackgroundImage("bg.png").fadeIn(300);
+
+advgui_loadImage(src, cb)
+  Preloads an image and returns an "image" view: { ready, width, height,
+  __img__ }. cb(view) fires on success, cb(null) on failure.
+
+advgui_pickImage(cb)
+  Opens the browser's native file picker (images only). cb(view) with the
+  same shape as advgui_loadImage, or cb(null) if the user cancels.
+
+==================================================================================
+ SECTION 2 — ANIMATION & EFFECTS
+==================================================================================
+
+advgui_animate(view, props, duration, easing, cb)
+  Generic tween. Animates numeric CSS properties of a view's element toward
+  the target values in `props` over `duration` ms.
+  props    : object of target values, e.g. { left: 200, top: 50, opacity: 1 }.
+             Recognizes: left, top, width, height, opacity, and a special
+             'transform' key which is set immediately (not tweened).
+  duration : ms, default 400.
+  easing   : 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' (default) |
+             'bounce' | 'elastic'
+  cb       : function(view) called once the animation finishes.
+  Returns: view.
+
+advgui_fadeIn(view, duration, cb)   — animates opacity 0 -> 1, unhides element.
+advgui_fadeOut(view, duration, cb)  — animates opacity 1 -> 0, then hides it.
+advgui_slideIn(view, dir, duration, cb)
+  dir: 'left' | 'right' | 'up' | 'down'. Slides the view in from that
+  direction into its current x/y position while fading in.
+advgui_pulse(view, scale, duration)
+  Quick scale-up-then-back "pop" effect. scale default 1.08.
+advgui_shake(view, duration)
+  Horizontal shake animation (good for "invalid input" feedback).
+
+advgui_addEffect(view, type, opts)
+  Applies a visual CSS effect in place (non-destructive to layout).
+  type:
+    'glow'      opts:{ size, color }            — outer glow box-shadow
+    'shadow'    opts:{ x, y, blur, color }       — drop shadow
+    'blur'      opts:{ amount }                  — CSS blur filter
+    'glass'     opts:{ amount, tint }            — frosted-glass / acrylic
+                (backdrop-filter blur + translucent tint), great for Win98/
+                Vista-style OS panels.
+    'scanlines' opts: none                       — retro CRT scanline overlay
+    'crt'       opts: none                       — scanlines + slight
+                contrast/brightness boost + flicker animation
+    'grain'     opts: none                       — subtle noise texture
+  Returns: view.
+
+advgui_particleBurst(canvasView, x, y, opts)
+  One-shot particle explosion drawn directly onto a gui.zl Canvas/Screen's
+  2D context, self-animating via requestAnimationFrame until particles die.
+  opts: { count, speed, color, decay, gravity }.
+
+==================================================================================
+ SECTION 3 — ADVANCED WIDGETS
+==================================================================================
+All widgets below return absolutely-positioned views meant to be added into a
+gui.zl Scene/Panel via scene.add(widget), same convention as Button/Label.
+
+advgui_createSlider(x, y, w, min, max, value)
+  .getValue() -> number
+  .setValue(n) -> self
+  .onChange(fn) -> self          fn(value) fires continuously while dragging
+  .setPosition(x,y) -> self
+
+advgui_createCheckbox(label, x, y, checked)
+  .isChecked() -> bool
+  .setChecked(bool) -> self
+  .onChange(fn) -> self          fn(checked)
+  .setText(str) -> self
+
+advgui_createRadioGroup(optionsArray, x, y, groupName)
+  .getValue() -> the currently selected option (from optionsArray)
+  .setValue(val) -> self
+  .onChange(fn) -> self          fn(selectedValue)
+
+advgui_createDropdown(optionsArray, x, y, w)
+  .getValue() -> string
+  .setValue(str) -> self
+  .setOptions(newArray) -> self
+  .onChange(fn) -> self          fn(value)
+
+advgui_createProgressBar(x, y, w, h)
+  .setProgress(percent0to100) -> self
+  .getProgress() -> number
+  .setColor(colorStart, colorEnd) -> self   (gradient fill)
+
+advgui_createTabs(tabsArray, x, y, w, h)
+  tabsArray: [{ title: "Name", content: someView }, ...]
+  .selectTab(index) -> self
+  .addTab(title, contentView) -> self
+
+advgui_createMenuBar(menusArray, x, y, w)
+  menusArray: [{ label:"File", items:[{ label:"Save", action:fn }, ...] }, ...]
+  Click-to-open dropdown menus, closes on outside click.
+
+advgui_createContextMenu(itemsArray)
+  itemsArray: [{ label:"Delete", action:fn }, ...]
+  .showAt(x, y) -> self           show at screen coordinates
+  .attachTo(view) -> self         auto right-click on that view opens the menu
+
+advgui_createTooltip(target, text)
+  Attaches a hover tooltip to any view/element.
+  .setText(str) -> self
+
+advgui_createModal(title, contentView, opts)
+  Full-screen dimmed overlay + centered dialog box.
+  opts: { width, closeOnOverlay (bool, default true) }
+  .close() -> void
+  .setTitle(str) -> self
+
+advgui_createListView(itemsArray, x, y, w, h)
+  itemsArray: array of strings, or objects with a .label property.
+  .setItems(newArray) -> self
+  .select(index) -> self
+  .getSelected() -> the selected item
+  .onSelect(fn) -> self           fn(item, index)
+
+advgui_createTextArea(x, y, w, h, placeholder)
+  Plain multi-line text box.
+  .getValue() / .setValue(str) -> self
+  .onChange(fn) -> self           fn(text)
+  .focus() -> self
+  .setFont(family, size) -> self
+
+advgui_createCodeEditor(x, y, w, h, opts)
+  Monospace text editor with a line-number gutter and 2-space Tab handling.
+  Ideal building block for a code-editor or notepad app.
+  opts: { value: "initial text" }
+  .getValue() / .setValue(str) -> self
+  .onChange(fn) -> self
+  .focus() -> self
+
+advgui_createTreeView(dataArray, x, y, w, h)
+  dataArray: [{ label:"Folder", icon:"📁", children:[ {label:"file.txt"} ] }, ...]
+  Nodes with a non-empty `children` array are expandable/collapsible folders.
+  .setData(newArray) -> self
+  .onSelect(fn) -> self           fn(node)
+
+advgui_createColorPicker(x, y, value)
+  Native color input.
+  .getValue() -> "#rrggbb"
+  .setValue(hex) -> self
+  .onChange(fn) -> self
+
+advgui_createToolbar(x, y, w, buttonsArray)
+  buttonsArray: [{ label:"Save", icon:"💾", action:fn }, ...]
+  .addButton(label, onClick, icon) -> self
+  .addSeparator() -> self
+
+advgui_createStatusBar(x, y, w, text)
+  .setText(str) -> self
+
+advgui_createSplitPane(x, y, w, h, leftView, rightView, ratio)
+  Draggable vertical divider between two panes. ratio: initial left width
+  fraction (0..1, default 0.3).
+
+advgui_createDesktopIcon(label, x, y, icon, onOpen)
+  Double-clickable desktop icon (emoji or text icon + label).
+  .onOpen(fn) -> self             registers another double-click handler
+
+==================================================================================
+ SECTION 4 — VIRTUAL FILESYSTEM / DRIVES
+==================================================================================
+
+advgui_createDrive(label, sizeMB)
+  A single virtual "drive" (e.g. "C"), backed by localStorage so its contents
+  persist across page reloads. label defaults to "C", sizeMB is informational
+  only (not enforced).
+  .write(path, content) -> true
+  .read(path) -> content string, or null if not found
+  .exists(path) -> bool
+  .remove(path) -> true
+  .list(dir) -> array of entry names directly inside dir (folders end in "/")
+  .mkdir(path) -> true            creates an (empty) folder marker
+  .usage() -> total bytes stored
+  .clear() -> wipes the whole drive
+
+advgui_createFileSystem(drivesArray)
+  Combines one or more drives under drive-letter paths like "C:/folder/file.txt".
+  If drivesArray is omitted, creates a single default "C" drive automatically.
+  .write(path, content) / .read(path) / .exists(path) / .remove(path)
+  .list(path) -> entries in that directory
+  .mkdir(path)
+  .addDrive(driveObj) -> self      mount another drive (e.g. "D")
+  .listDrives() -> array of mounted drive letters
+
+  Path format: "C:/folder/file.txt" (drive letter is optional; defaults to
+  the first mounted drive if omitted).
+
+==================================================================================
+ SECTION 5 — SIMULATED OS  (desktop / taskbar / CLI)
+==================================================================================
+
+advgui_createOS(opts)
+  Boots a full-screen simulated desktop OS overlay (its own fixed-position
+  container appended to the page — this is a standalone environment, not
+  something you .add() into a Window).
+  opts: { background: CSS color, startLabel: string, fs: a filesystem object
+          from advgui_createFileSystem() }
+  Returns an `os` object:
+    os.registerApp(name, icon, launcherFn) -> os
+        Adds an entry to the Start Menu. launcherFn(os) is called on click —
+        typically calls os.openWindow(...) inside it.
+    os.addIcon(label, x, y, icon, onOpen) -> desktopIcon view
+        Adds a double-clickable icon directly on the desktop.
+    os.openWindow(title, w, h) -> an OS window view
+        A full draggable/minimizable/maximizable/closable app window,
+        rendered inside the simulated desktop (independent of gui.zl's own
+        Window — this one belongs to the OS instance).
+        window.setTitle(str) -> self
+        window.add(childView) -> self      appends into the window body
+        window.setBackgroundImage(src, opts) -> self
+        window.close() -> void
+    os.closeAll() -> void             closes every open OS window
+    os.shutdown() -> void             tears down the whole simulated OS
+    os.fs -> the attached virtual filesystem
+    os.apps -> { name: launcherFn, ... } registry
+    os.taskbar -> internal taskbar controller (add/remove running-app chips)
+
+  Example flow: createOS -> registerApp for each app -> addIcon on desktop
+  for quick launch -> user clicks Start or double-clicks an icon -> your
+  launcher calls os.openWindow(...) and fills it with widgets via .add().
+
+advgui_createCLI(x, y, w, h, opts)
+  A terminal / command-line emulator view, useful standalone or dropped
+  inside an OS window to prototype a CLI-style OS.
+  opts: { prompt: "> " }
+  .print(text) -> self             prints a line of output
+  .clear() -> self
+  .setPrompt(str) -> self
+  .registerCommand(name, fn, helpText) -> self
+        fn(argsArray, cliView) is called when the user types that command.
+        Call cliView.print(...) from inside fn to produce output.
+  .attachFS(fsObject) -> self      wires ls/cat/write/mkdir to a filesystem
+  .run(line) -> void               programmatically execute a command line
+  .focus() -> self
+
+  Built-in commands (always available): help, clear, echo <text>.
+  Built-in commands (require .attachFS): ls [dir], cat <path>,
+  write <path> <content...>, mkdir <path>.
+  Arrow Up/Down cycles command history in the input field.
+
+==================================================================================
+ SECTION 6 — INTERNET ACCESS
+==================================================================================
+
+advgui_httpGet(url, cb)          cb(error, textBody)
+advgui_httpGetJSON(url, cb)      cb(error, parsedJSON)
+advgui_httpPost(url, data, cb)   cb(error, textBody) — data is JSON-encoded
+                                  automatically and sent with a JSON content
+                                  type header.
+
+advgui_createBrowser(x, y, w, h, homeUrl)
+  A self-contained mini web browser widget: address bar, Go, Back, Forward,
+  and a sandboxed iframe. Good for a fake-OS "Browser" app, or just to give
+  a prototype real internet access.
+  .navigate(url) -> self           loads a URL (https:// is assumed if the
+                                    scheme is omitted)
+  Note: like any iframe, some sites block embedding via X-Frame-Options/CSP
+  and won't load inside the widget — that's a restriction of the target site,
+  not of advgui.
+
+==================================================================================
+ SECTION 7 — IMAGE PROCESSING
+==================================================================================
+All of these operate directly on a gui.zl Canvas (or Screen) view's pixels —
+pass in the Canvas view you already have, e.g. from Canvas(w,h) or Screen(w,h).
+
+advgui_imgToCanvas(canvasView, src, cb)
+  Loads an image from src and draws it stretched to fill the canvas. cb(true)
+  on success, cb(false) on failure.
+advgui_imgGrayscale(canvasView)     -> canvasView   desaturates in place
+advgui_imgInvert(canvasView)        -> canvasView   inverts RGB in place
+advgui_imgBrightness(canvasView, amount) -> canvasView   amount: -255..255
+advgui_imgContrast(canvasView, amount)   -> canvasView   amount: -255..255
+advgui_imgBlur(canvasView, radiusPx)     -> canvasView
+advgui_imgFlip(canvasView, axis)         -> canvasView   axis: 'h' | 'v'
+advgui_imgRotate(canvasView, degrees)    -> canvasView
+advgui_imgCrop(canvasView, x, y, w, h)   -> canvasView   also resizes the
+                                            canvas itself to w x h
+advgui_imgExport(canvasView, filename)   -> dataURL string
+  Triggers a real PNG download of the canvas contents (or just use the
+  returned data URL yourself, e.g. to display or upload it).
+
+==================================================================================
+ SECTION 8 — 2D / PSEUDO-3D GAME HELPERS
+==================================================================================
+
+advgui_createSprite(src, frameW, frameH, opts)
+  Spritesheet animation helper (not tied to any one canvas).
+  opts: { fps, cols, frameCount }
+  sprite.draw(ctx, x, y, scale) -> void     draw current frame
+  sprite.update(dtMs) -> void               advances the animation
+  sprite.setFrame(n) -> self
+  sprite.play() / sprite.pause() -> self
+
+advgui_createParallax(canvasView, layersArray)
+  layersArray: [{ speed: 0.2, color: "#223", draw: fn(ctx, offsetX) }, ...]
+  parallax.render(ctx) -> void        draw all layers at current offset
+  parallax.scroll(dx) -> self         advance the scroll offset
+
+advgui_createTilemap(tileSize, mapArray2D)
+  mapArray2D: rows of tile-index numbers (-1 = empty, 1 = solid by default
+  convention when no tileset image is given).
+  tilemap.draw(ctx, tilesetOrNull, camX, camY) -> void
+     tileset (optional): { img: an Image element, cols: number }
+  tilemap.solidAt(px, py) -> bool     tile-grid collision check in pixel space
+
+advgui_createParticleSystem(opts)
+  opts: { gravity }
+  ps.emit(x, y, count, color, speed) -> void
+  ps.update() -> void          call once per frame
+  ps.draw(ctx) -> void         call once per frame after update()
+
+advgui_aabbCollide(a, b) -> bool
+  a, b: { x, y, w, h } rectangles.
+advgui_circleCollide(a, b) -> bool
+  a, b: { x, y, r } circles.
+
+advgui_createPhysicsBody(x, y, w, h, opts) -> body
+  opts: { mass, friction (0..1, default 0.85), static (bool) }
+  body: { x, y, w, h, vx, vy, mass, friction, grounded, static }
+advgui_stepPhysics(bodiesArray, gravity, groundY)
+  Advances every non-static body by gravity + velocity for one frame, applies
+  simple friction, resolves ground collision at y = groundY, and separates
+  overlapping bodies (very simple AABB push-apart resolution — enough for
+  a platformer prototype, not a full physics engine).
+
+advgui_iso(x, y, z, opts) -> { sx, sy }
+  Converts 2.5D "grid" coordinates (x, y, height z) into isometric screen
+  coordinates, for an isometric/"3D-looking" 2D game.
+  opts: { tileWidth (default 64), tileHeight (default 32), heightScale }
+
+advgui_project3D(x, y, z, camera) -> { sx, sy, scale }
+  Simple perspective projection: scales and positions a 3D point onto a 2D
+  canvas based on a camera { x, y, z, fov, cx, cy }. `scale` also tells you
+  how large to draw a sprite/shape at that depth (use it to multiply sprite
+  size and to sort draw order back-to-front).
+
+==================================================================================
+ SECTION 9 — FILE I/O  (notepad-style save / open)
+==================================================================================
+
+advgui_saveTextFile(filename, content)
+  Triggers a real file download of `content` as a .txt (or whatever
+  extension you put in filename) — the standard "Save As" pattern for a
+  browser-based notepad/editor.
+
+advgui_openTextFile(cb)
+  Opens the native file picker restricted to text-like files
+  (.txt/.js/.zl/.md/.json/text/*). cb(filename, content) on success,
+  cb(null, null) if the user cancels.
+
+==================================================================================
+ QUICK REFERENCE — ALL INJECTED GLOBALS
+==================================================================================
+advgui_setBackgroundImage, advgui_extend, advgui_loadImage, advgui_pickImage,
+advgui_animate, advgui_fadeIn, advgui_fadeOut, advgui_slideIn, advgui_pulse,
+advgui_shake, advgui_addEffect, advgui_particleBurst,
+advgui_createSlider, advgui_createCheckbox, advgui_createRadioGroup,
+advgui_createDropdown, advgui_createProgressBar, advgui_createTabs,
+advgui_createMenuBar, advgui_createContextMenu, advgui_createTooltip,
+advgui_createModal, advgui_createListView, advgui_createTextArea,
+advgui_createCodeEditor, advgui_createTreeView, advgui_createColorPicker,
+advgui_createToolbar, advgui_createStatusBar, advgui_createSplitPane,
+advgui_createDesktopIcon,
+advgui_createDrive, advgui_createFileSystem,
+advgui_createOS, advgui_createCLI,
+advgui_httpGet, advgui_httpGetJSON, advgui_httpPost, advgui_createBrowser,
+advgui_imgToCanvas, advgui_imgGrayscale, advgui_imgInvert, advgui_imgBrightness,
+advgui_imgContrast, advgui_imgBlur, advgui_imgFlip, advgui_imgRotate,
+advgui_imgCrop, advgui_imgExport,
+advgui_createSprite, advgui_createParallax, advgui_createTilemap,
+advgui_createParticleSystem, advgui_aabbCollide, advgui_circleCollide,
+advgui_createPhysicsBody, advgui_stepPhysics, advgui_iso, advgui_project3D,
+advgui_saveTextFile, advgui_openTextFile
+
+==================================================================================
+ IMPORTING
+==================================================================================
+In your .zl source, import in this order:
+
+    import "gui.zl";
+    import "advgui.zl";
+
+gui.zl gives you Window/Scene/Button/Label/TextField/Canvas/Screen/Camera/Panel.
+advgui.zl gives you everything listed above, all prefixed advgui_, designed to
+be combined with gui.zl's widgets (e.g. put an advgui_createSlider inside a
+Scene, or call advgui_setBackgroundImage on a gui.zl Window).
+==================================================================================

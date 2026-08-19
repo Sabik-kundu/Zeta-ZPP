@@ -1,0 +1,49 @@
+ZETA AUDIO ENGINE - Technical Documentation
+========================================
+
+Overview:
+An in-process audio playback engine using node-lame for decoding and speaker for output. Supports standard playback, region looping, and basic DSP effects.
+
+CORE CLASS
+----------
+
+AudioClip
+The primary object for handling an MP3/PCM audio file.
+
+- play(start, end): Plays the file.
+  - clip.play() -> Full playback.
+  - clip.play(10) -> Starts at 10 seconds.
+  - clip.play(10, 20) -> Plays exactly 10s to 20s.
+
+- pause() / resume() / stop(): Standard playback control.
+- fadeIn(duration) / fadeOut(duration): Smooth volume ramping.
+- setVolume(level): Sets gain from 0.0 to 1.0.
+- setPan(value): Distributes audio between Left (-1.0) and Right (1.0).
+- loop(enabled): Enables automatic restart upon completion.
+
+GLOBAL API
+----------
+
+- audio.load(path): 
+  Loads a file but does not start playback. Returns an AudioClip.
+
+- audio.play(path, start, end): 
+  Convenience helper to load and play immediately.
+
+- audio.background(path, volume): 
+  Configures an AudioClip for looping background music at a specific volume.
+
+- audio.stopAll(): 
+  Stops every active AudioClip globally.
+
+EXAMPLE USAGE
+-------------
+// Play background music
+const bgm = audio.background("./music.mp3", 0.3);
+
+// Play a specific sound effect with pan
+const sfx = audio.load("./effect.mp3");
+sfx.setPan(0.5).play();
+
+// Fade out and stop after 5 seconds
+bgm.fadeOut(5);

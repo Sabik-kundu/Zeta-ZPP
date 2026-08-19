@@ -1,0 +1,171 @@
+================================================================
+  ZPP LIBRARY: time.zl
+  Date, Time, and Clock Utilities
+================================================================
+
+Import with:
+  #import["time.zl"];
+
+Provides functions for reading the current date and time,
+formatting timestamps, measuring durations, and displaying
+live clock widgets in the terminal or browser.
+
+----------------------------------------------------------------
+  CURRENT DATE & TIME
+  (All functions read from the system clock at the moment called)
+----------------------------------------------------------------
+
+now()
+  Returns the current time as milliseconds since the Unix epoch
+  (January 1, 1970, 00:00:00 UTC). Useful as a timestamp.
+
+year()
+  Returns the current year as a 4-digit number.
+
+month()
+  Returns the current month as a number from 1 (January)
+  to 12 (December).
+
+day()
+  Returns the current day of the month (1 – 31).
+
+hour()
+  Returns the current hour in 24-hour format (0 – 23).
+
+minute()
+  Returns the current minute (0 – 59).
+
+second()
+  Returns the current second (0 – 59).
+
+millisecond()
+  Returns the current millisecond (0 – 999).
+
+dayOfWeek()
+  Returns the name of the current day as a string.
+  Possible values: "Sunday", "Monday", "Tuesday", "Wednesday",
+  "Thursday", "Friday", "Saturday".
+
+monthName()
+  Returns the full name of the current month as a string.
+  Possible values: "January", "February", …, "December".
+
+----------------------------------------------------------------
+  FORMATTED DATE & TIME STRINGS
+----------------------------------------------------------------
+
+dateStr()
+  Returns the current date formatted as a locale-appropriate
+  string (e.g. "5/27/2025" in US locale).
+
+timeStr()
+  Returns the current time formatted as a locale-appropriate
+  string (e.g. "3:45:12 PM").
+
+timestamp()
+  Returns the current date and time as an ISO 8601 string
+  (e.g. "2025-05-27T15:45:12.000Z").
+
+dateTimeStr()
+  Returns both the current date and time as a combined
+  locale-appropriate string.
+
+formatTime(milliseconds)
+  Formats a Unix timestamp given in milliseconds into a
+  human-readable string in the form:
+    YYYY-MM-DD HH:MM:SS
+
+----------------------------------------------------------------
+  DURATION CONVERSION
+----------------------------------------------------------------
+
+msToSeconds(ms)
+  Converts milliseconds to seconds.
+
+msToMinutes(ms)
+  Converts milliseconds to minutes.
+
+msToHours(ms)
+  Converts milliseconds to hours.
+
+formatDuration(ms)
+  Converts a duration in milliseconds into a compact, readable
+  string. The format adapts to the magnitude:
+    Days    — "2d 3h 15m"
+    Hours   — "3h 15m 42s"
+    Minutes — "15m 42s"
+    Seconds — "42s"
+
+----------------------------------------------------------------
+  STOPWATCH
+----------------------------------------------------------------
+
+timerStart()
+  Marks the start of a timed interval. Stores the current
+  timestamp internally. Returns the start time in milliseconds.
+  Calling this again resets the timer.
+
+timerEnd()
+  Stops the running timer and returns the elapsed time in
+  milliseconds since timerStart() was called.
+  Returns 0 if the timer was never started.
+
+timerElapsed()
+  Returns the elapsed time in milliseconds since timerStart()
+  was called, without stopping the timer.
+  Returns 0 if the timer is not running.
+
+----------------------------------------------------------------
+  UNIX EPOCH HELPERS
+----------------------------------------------------------------
+
+unixNow()
+  Returns the current time as a Unix timestamp (whole seconds
+  since January 1, 1970).
+
+fromUnix(seconds)
+  Converts a Unix timestamp (in seconds) into a
+  locale-appropriate date and time string.
+
+daysBetween(timestampA, timestampB)
+  Returns the number of calendar days between two timestamps
+  given in milliseconds. The order of arguments does not matter;
+  the result is always non-negative.
+
+----------------------------------------------------------------
+  LIVE CLOCK DISPLAY
+----------------------------------------------------------------
+
+startClock(theme?)
+  Starts a live clock that updates in real time.
+
+  In terminal mode the clock is rendered as a text line that
+  refreshes every second. The theme parameter is ignored in
+  terminal mode.
+
+  In browser mode the clock is rendered as a styled widget
+  injected into the output area. The optional theme argument
+  controls the visual style:
+    "neon"    — Cyan glowing digits on a dark background (default)
+    "retro"   — Amber/orange digits with a warm dark background
+    "minimal" — Clean light digits on a dark background
+
+  The widget shows hours, minutes, seconds, AM/PM, a
+  millisecond progress bar, a seconds ring, the current date,
+  and the Unix timestamp. A STOP button is included.
+
+  Returns a status string describing how the clock was started.
+
+stopClock()
+  Stops the running clock started by startClock() or termClock()
+  and removes the widget from the output.
+  Returns the string "Clock stopped."
+
+termClock()
+  Starts a plain text (monospace) clock using block characters
+  for large pixel-font digits. Intended for terminal use or
+  minimal rendering environments.
+  Uses stopClock() to stop it.
+  In terminal environments, this falls back to startClock().
+
+================================================================

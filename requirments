@@ -1,0 +1,10 @@
+The requirments for zpp are.
+
+1. The interperter is baked by node. So node is required.
+2. Electron node module is required for guis.
+
+After all the steps are done. 
+run `npm install -g .` in the file through powershell.
+
+After all the steps completed if you face any issue, 
+Feel free to contact: sabik.kundu1@gmail.com

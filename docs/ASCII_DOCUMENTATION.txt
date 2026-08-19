@@ -1,0 +1,51 @@
+ASCII LIBRARY - Technical Documentation
+=======================================
+
+Overview:
+A comprehensive utility for ASCII character code conversions, classification, string encoding, and basic substitution ciphers.
+
+CONVERSIONS
+-----------
+
+- ascii.get(char): char -> code (e.g., 'A' -> 65)
+- ascii.convert(code): code -> char (e.g., 97 -> 'a')
+- ascii.encode(str): string -> number[] array of codes.
+- ascii.decode(codes): number[] -> string.
+
+CLASSIFICATION (Boolean checks)
+-------------------------------
+
+- ascii.isLetter(input): True for A-Z, a-z.
+- ascii.isDigit(input): True for 0-9.
+- ascii.isAlphanumeric(input): True for letters or digits.
+- ascii.isWhitespace(input): True for space, \n, \t, etc.
+- ascii.isPrintable(input): True for visible characters (32-126).
+- ascii.isControl(input): True for non-printable control codes (0-31, 127).
+
+STRING & CIPHER UTILS
+---------------------
+
+- ascii.rot13(str): Applies the ROT-13 substitution cipher.
+- ascii.caesar(str, shift): Applies a Caesar cipher with a custom shift amount.
+- ascii.swapCase(str): Flipps uppercase to lowercase and vice versa.
+- ascii.clean(str): Removes all non-printable ASCII characters.
+- ascii.stats(str): Returns an object breaking down char categories (letters, digits, etc.).
+
+METADATA
+--------
+
+- ascii.name(charOrCode): Returns the official ASCII name (e.g. "LATIN CAPITAL LETTER A").
+- ascii.describe(input): Returns a full descriptor object { char, code, hex, binary, name, category }.
+
+EXAMPLE USAGE
+-------------
+const secret = "Hello World";
+const encrypted = ascii.caesar(secret, 5); // "Mjqqt Btwqi"
+
+if (ascii.isPureAscii(secret)) {
+  const codes = ascii.encode(secret);
+  console.log("Hex representation:", ascii.toHex(secret[0]));
+}
+
+const report = ascii.stats("User: John123!");
+console.log(`Digits found: ${report.digits}`);

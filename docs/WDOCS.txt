@@ -1,0 +1,1455 @@
+================================================================================
+  worlib.zl / worgame.zl / worphisics.zl — ZETA++ (ZPP) LOW-LEVEL ECOSYSTEM
+  "Win32-style handles and free functions for GUIs, games, and physics."
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+  1.  Introduction & Design Philosophy
+  2.  Loading The Libraries
+  3.  The Handle Model (wl_/wg_/wp_ prefixing, private fields)
+  4.  worlib.zl — WINDOWS
+  5.  worlib.zl — BASIC WIDGETS
+  6.  worlib.zl — MENU
+  7.  worlib.zl — TOOLBAR
+  8.  worlib.zl — STATUS BAR
+  9.  worlib.zl — TAB CONTROL
+  10. worlib.zl — TREE VIEW
+  11. worlib.zl — LIST VIEW
+  12. worlib.zl — CANVAS (drawing + raw pixel access)
+  13. worlib.zl — IMAGE LOADING
+  14. worlib.zl — TEXT FILE I/O
+  15. worlib.zl — DIALOGS
+  16. worlib.zl — INPUT (keyboard / mouse / hotkeys)
+  17. worlib.zl — GENERIC PROPERTY FUNCTIONS
+  18. worlib.zl — LOOP & TIMING
+  19. worlib.zl — SOUND
+  20. worlib.zl — UTILITY
+  21. worlib_structs.zpp — STRUCTS
+  22. worgame.zl — GAME & LOOP
+  23. worgame.zl — SPRITES / ENTITIES
+  24. worgame.zl — COLLISION
+  25. worgame.zl — CAMERA
+  26. worgame.zl — INPUT
+  27. worgame.zl — TIMERS (COOLDOWNS)
+  28. worgame.zl — TILEMAPS
+  29. worgame.zl — IMAGES & SPRITE SHEETS
+  30. worgame.zl — DRAWING HELPERS
+  31. worgame.zl — SOUND & UTILITY
+  32. worphisics.zl — WORLD
+  33. worphisics.zl — BODIES
+  34. worphisics.zl — COLLISION & STEPPING
+  35. worphisics.zl — COLLISION CALLBACKS
+  36. Cross-Library Integration (worlib + worgame + worphisics together)
+  37. Quick Reference Card
+  38. Examples
+
+
+================================================================================
+  1. INTRODUCTION & DESIGN PHILOSOPHY
+================================================================================
+
+This is a three-library ecosystem for ZETA++ built around one idea: give you
+LOW-LEVEL, Win32-flavored building blocks — handles and free functions —
+rather than a high-level framework with hidden behavior. Nothing here tries
+to guess what you want; every function does exactly one small thing, and you
+compose them yourself. That means you can build a code editor, a game, a
+physics playground, or a whole toy desktop/OS simulator out of the same
+parts without ever hitting a wall where "the library doesn't support that."
+
+  worlib.zl      Retro Win9x-style GUI: windows, buttons, menus, tree
+                 views, canvases, dialogs, file I/O, input, sound. Names
+                 start with wl_.
+
+  worgame.zl     A small 2D game engine: game loop, sprites, collision,
+                 camera, tilemaps, sprite sheets. Names start with wg_.
+                 Works standalone, or hosts itself inside a worlib.zl
+                 window automatically if one is loaded.
+
+  worphisics.zl  A small 2D physics engine: bodies, gravity, forces,
+                 impulse-based collision resolution. Pure math, no DOM
+                 required — usable headless or paired with worgame.zl
+                 for rendering. Names start with wp_.
+
+WHY "LOW-LEVEL"?
+------------------
+Compare this to gui.zl (a separate, higher-level library): gui.zl gives you
+chainable objects — `button.setColor(...).work(fn)`. worlib.zl instead gives
+you a Win32 CreateWindow/MoveWindow/SetWindowText-style API: you get back a
+plain handle, and you call free functions on it — `wl_SetText(button, "OK")`.
+This is more verbose but also more transparent and more flexible: every
+handle exposes its raw DOM element (`handle.wl_el`) and there's a raw-CSS
+escape hatch (`wl_SetStyle`) for anything not already covered.
+
+WHY THREE SEPARATE LIBRARIES INSTEAD OF ONE?
+-----------------------------------------------
+So you only pay for what you use. A pure physics simulation doesn't need a
+GUI. A game doesn't need tree views. You can import just worphisics.zl in a
+headless script, or just worgame.zl for a game with no window chrome, or all
+three together for a full application.
+
+
+================================================================================
+  2. LOADING THE LIBRARIES
+================================================================================
+
+    #import["worlib.zl"];
+    #import["worlib_structs.zpp"];   // optional — real ZPP structs
+    #import["worgame.zl"];           // optional — 2D game engine
+    #import["worphisics.zl"];        // optional — 2D physics engine
+
+IMPORT ORDER MATTERS for one thing only: if you want worgame.zl's
+wg_CreateGame() to open inside a nice retro worlib.zl window instead of a
+bare canvas, import worlib.zl BEFORE worgame.zl. See section 36 for details.
+Every other combination and order works fine — none of these three libraries
+require any of the others to function.
+
+
+================================================================================
+  3. THE HANDLE MODEL
+================================================================================
+
+Every wl_Create*/wg_Create*/wp_Create* function returns a HANDLE: a plain
+value with a fixed set of public fields you can read directly, plus some
+private bookkeeping you shouldn't touch.
+
+worlib.zl handle (returned by every wl_Create* function):
+    handle.wl_kind        "window" | "button" | "label" | "editbox" | ...
+    handle.wl_el           the raw DOM element — full escape-hatch access
+    handle.wl_x, wl_y       position in pixels
+    handle.wl_width, wl_height
+    handle.wl_visible       bool
+    handle.wl_enabled       bool
+    handle.wl_parent        the handle it was added to (or null)
+    handle.wl_children      array of handles added to it
+
+worgame.zl sprite (returned by wg_CreateSprite):
+    sprite.wg_kind          "sprite"
+    sprite.wg_x, wg_y        position in pixels
+    sprite.wg_width, wg_height
+    sprite.wg_vx, wg_vy      velocity (px/second) — yours to use however
+    sprite.wg_color          fallback fill color when no image is set
+    sprite.wg_image          an image/spritesheet handle, or null
+    sprite.wg_rotation       radians
+    sprite.wg_visible        bool
+    sprite.wg_active         bool — false excludes it from wg_DrawAllSprites
+
+worphisics.zl body (returned by wp_CreateBody):
+    body.wp_kind             "body"
+    body.wp_shape             "box" | "circle"
+    body.wp_x, wp_y            position (box: top-left; circle: center)
+    body.wp_width, wp_height    box dimensions
+    body.wp_radius              circle radius (defaults to width/2)
+    body.wp_vx, wp_vy            velocity (px/second)
+    body.wp_mass                 defaults to 1
+    body.wp_restitution           0 = no bounce .. 1 = perfectly elastic
+    body.wp_friction               0..1, per-step velocity damping
+    body.wp_isStatic                 true = never moves, infinite mass
+
+Fields starting with a single underscore or living inside a `__private` bag
+are internal and not part of the public API — don't rely on their shape.
+
+You can pass either two plain numbers OR a matching struct (section 21)
+almost everywhere a position/size/color is expected — every function
+duck-types this, so wl_CreateWindow("Title", 10, 20, 400, 300) and
+wl_CreateWindow("Title", myPoint, mySize) both work.
+
+
+================================================================================
+  4. worlib.zl — WINDOWS
+================================================================================
+
+    let win = wl_CreateWindow(title, x, y, w, h);
+
+Creates a draggable, closable window with classic Win9x chrome: a blue
+gradient titlebar, minimize/maximize/close system buttons, and a raised
+bevel border. Mounted on a shared full-screen desktop root that's created
+automatically the first time you make a window.
+
+FUNCTIONS
+    wl_CreateWindow(title, x, y, w, h)   w/h default to 480×340.
+    wl_ShowWindow(win)                    Makes a hidden window visible again.
+    wl_HideWindow(win)                     Hides without destroying it.
+    wl_CloseWindow(win)                     Destroys it — runs any
+                                            wl_OnWindowClose callbacks first,
+                                            then removes it from the DOM.
+    wl_SetWindowTitle(win, text)
+    wl_MoveWindow(win, x, y)
+    wl_ResizeWindow(win, w, h)
+    wl_FocusWindow(win)                       Brings it to the front
+                                              (raises its z-index).
+    wl_OnWindowClose(win, fn)                  Registers a callback fired
+                                              right before the window is
+                                              destroyed. You can register
+                                              more than one.
+    wl_SetWindowBackground(win, color)          Sets the body area's
+                                              background color (not the
+                                              titlebar).
+    wl_AddChild(parent, child)                   Mounts any handle inside
+                                              a window's body (or inside a
+                                              GroupBox/Panel/TabControl
+                                              page — anything with its own
+                                              content area).
+
+The minimize button hides the window (⌐ same as wl_HideWindow). The
+maximize button toggles between the window's current rect and filling the
+whole viewport, remembering the previous rect so a second click restores
+it. The close button calls wl_CloseWindow.
+
+NOTE: windows are draggable by their titlebar out of the box — there's no
+function to turn this off, since it's core to what makes it feel like a
+window. If you need a fixed, non-draggable panel, use wl_CreatePanel
+(section 5) instead.
+
+
+================================================================================
+  5. worlib.zl — BASIC WIDGETS
+================================================================================
+
+All of these are created with absolute x/y (pixels, relative to whatever
+they get wl_AddChild'd into) and are NOT auto-added anywhere — you must
+call wl_AddChild(parent, widget) yourself.
+
+5.1  LABEL
+------------
+    wl_CreateLabel(text, x, y)
+Plain, non-interactive text (pointer-events disabled).
+
+5.2  BUTTON
+-------------
+    wl_CreateButton(text, x, y, w, h)      w/h default to 80×24.
+A classic pushbutton with a raised bevel that visibly depresses (sunken
+bevel) on mousedown and pops back up on mouseup/mouseleave. Bind clicks
+with wl_On(button, "click", fn) — see section 16.
+
+5.3  EDIT BOX (single-line text input)
+------------------------------------------
+    wl_CreateEditBox(placeholder, x, y, w, h)    w/h default to 140×20.
+Sunken-bevel `<input type="text">`. Read/write its text with wl_GetText /
+wl_SetText, or the lower-level wl_GetValue / wl_SetValue.
+
+5.4  TEXT AREA (multi-line text editor)
+-------------------------------------------
+    wl_CreateTextArea(text, x, y, w, h)           w/h default to 300×160.
+Sunken-bevel monospaced `<textarea>` — the piece you need for a code
+editor. Tab inserts a literal tab character at the cursor instead of the
+browser's default behavior of moving focus away.
+
+5.5  CHECKBOX
+---------------
+    wl_CreateCheckbox(label, x, y, checked)
+Read/write its checked state with wl_GetValue / wl_SetValue (returns/takes
+a bool).
+
+5.6  RADIO BUTTON
+-------------------
+    wl_CreateRadioButton(label, x, y, group, checked)
+group is a string — all radio buttons created with the same group name
+share one native `<input type="radio" name="...">` group, so selecting one
+automatically deselects the others in that group.
+
+5.7  SLIDER
+-------------
+    wl_CreateSlider(x, y, w, min, max, value)     w defaults to 150.
+A native `<input type="range">`. Read/write with wl_GetValue / wl_SetValue
+(returns a Number).
+
+5.8  PROGRESS BAR
+-------------------
+    wl_CreateProgressBar(x, y, w, h, value)        w/h default to 200×18.
+A sunken-bevel track with a filled bar inside. wl_SetValue(pb, n) sets the
+current value (fill width is computed as a percentage of 100 by default);
+wl_GetValue(pb) returns the raw value you last set.
+
+5.9  COMBO BOX (dropdown)
+----------------------------
+    wl_CreateComboBox(items, x, y, w)               w defaults to 140.
+items is an array of strings, used as both each `<option>`'s value and
+label. Read/write the selection with wl_GetValue / wl_SetValue.
+
+5.10  LIST BOX
+-----------------
+    wl_CreateListBox(items, x, y, w, h)              w/h default to 160×120.
+    wl_AddListItem(listbox, text)                     Appends one more row.
+    wl_ClearListBox(listbox)                            Removes all rows.
+    wl_GetSelectedIndex(listbox)                         -1 if nothing is
+                                                         selected.
+    wl_OnListSelect(listbox, fn)                          fn(index, text)
+                                                         called whenever a
+                                                         row is clicked.
+A simple single-select list with a highlighted selected row (only one
+listener is kept — calling wl_OnListSelect again replaces it, it doesn't
+stack).
+
+5.11  GROUP BOX
+------------------
+    wl_CreateGroupBox(label, x, y, w, h)               w/h default to 200×120.
+A sunken-bevel bordered container with a small label "chip" cut into the
+top edge — classic fieldset look. wl_AddChild into it like a window.
+
+5.12  PANEL
+--------------
+    wl_CreatePanel(x, y, w, h)                          w/h default to 200×150.
+A plain, borderless container — use this for grouping widgets without any
+visual chrome, or as a non-draggable alternative to a window. wl_AddChild
+into it like a window.
+
+
+================================================================================
+  6. worlib.zl — MENU
+================================================================================
+
+Classic File/Edit/Help-style top menu bar.
+
+    let menu = wl_CreateMenu();
+    let fileMenu = wl_AddMenu(menu, "File");
+    wl_AddMenuItem(fileMenu, "New", fn() => ...);
+    wl_AddMenuItem(fileMenu, "Open", fn() => ...);
+    wl_AddMenuSeparator(fileMenu);
+    wl_AddMenuItem(fileMenu, "Exit", fn() => wl_CloseWindow(win));
+    wl_SetMenu(win, menu);
+
+FUNCTIONS
+    wl_CreateMenu()                       Creates the empty menu bar.
+                                          Clicking outside any open dropdown
+                                          closes it automatically.
+    wl_AddMenu(menubar, label)             Adds a top-level entry (e.g.
+                                          "File") and returns a submenu
+                                          handle to add items to.
+    wl_AddMenuItem(submenu, label, fn)      fn() is called with no
+                                          arguments when clicked; the
+                                          dropdown closes first.
+    wl_AddMenuSeparator(submenu)             A thin divider line.
+    wl_SetMenu(win, menu)                     Docks the menu bar to the top
+                                          of a window, above its body.
+
+NOTE: wl_SetMenu must be called AFTER the window is created but works
+regardless of whether you've already wl_AddChild'd other widgets into the
+window's body — the menu bar is inserted structurally above the body, not
+inside it.
+
+
+================================================================================
+  7. worlib.zl — TOOLBAR
+================================================================================
+
+    let tb = wl_CreateToolbar(x, y, w);           w defaults to 300.
+    wl_AddToolbarButton(tb, "Save", fn() => doSave());
+    wl_AddToolbarButton(tb, "Cut", fn() => doCut());
+
+A horizontal row of flat buttons (bevel only appears on hover/press) —
+lower-profile than wl_CreateButton, meant for an icon/text row under a
+menu bar. There's no built-in icon system; put a short label or a single
+unicode glyph as the text.
+
+
+================================================================================
+  8. worlib.zl — STATUS BAR
+================================================================================
+
+    let sb = wl_CreateStatusBar(x, w);            w null = fills 100% width.
+    wl_SetStatusText(sb, "Ready");
+    wl_SetStatusParts(sb, ["Ln 4, Col 12", "128 words", "UTF-8"]);
+
+wl_SetStatusParts joins the array with a "  |  " separator — a quick way to
+build a multi-segment status readout without managing multiple labels.
+Note: wl_CreateStatusBar does NOT dock itself to the bottom of a specific
+window automatically — position it with x/w and wl_AddChild it into your
+window's body; its own CSS pins it to left:0/bottom:0 of whatever it's
+inside.
+
+
+================================================================================
+  9. worlib.zl — TAB CONTROL
+================================================================================
+
+    let tabs = wl_CreateTabControl(x, y, w, h);    w/h default to 300×200.
+    let page1 = wl_AddTab(tabs, "General");
+    let page2 = wl_AddTab(tabs, "Advanced");
+    wl_AddChild(page1, wl_CreateLabel("Settings go here", 10, 10));
+    wl_SelectTab(tabs, 0);
+
+FUNCTIONS
+    wl_CreateTabControl(x, y, w, h)
+    wl_AddTab(tabctrl, label)             Adds a new tab button and returns
+                                          a PANEL-like handle — wl_AddChild
+                                          your page's widgets into it. The
+                                          very first tab added is selected
+                                          automatically.
+    wl_SelectTab(tabctrl, index)           0-based index. Switches which
+                                          page is visible and updates the
+                                          tab buttons' pressed/raised look.
+
+
+================================================================================
+  10. worlib.zl — TREE VIEW
+================================================================================
+
+    let tree = wl_CreateTreeView(x, y, w, h);       w/h default to 180×200.
+    let drive = wl_AddTreeNode(tree, null, "C:");
+    let users = wl_AddTreeNode(tree, drive, "Users");
+    let docs  = wl_AddTreeNode(tree, users, "Documents");
+    wl_OnTreeSelect(tree, fn(node, label) => print("selected: #label"));
+
+FUNCTIONS
+    wl_CreateTreeView(x, y, w, h)
+    wl_AddTreeNode(tree, parentNode, label)     Pass null as parentNode for
+                                                a top-level (root) node.
+                                                Each node is indented based
+                                                on its depth and prefixed
+                                                with a folder icon glyph.
+    wl_OnTreeSelect(tree, fn)                     fn(node, label) — only
+                                                one selection listener per
+                                                tree (registering again
+                                                replaces it).
+
+Good building block for a file explorer / OS-simulator sidebar, or any
+hierarchical picker.
+
+
+================================================================================
+  11. worlib.zl — LIST VIEW
+================================================================================
+
+Simple multi-column list, like Explorer's "Details" view — good for file
+listings, process lists, etc.
+
+    let lv = wl_CreateListView(x, y, w, h, ["Name", "Size", "Type"]);
+    wl_AddListViewRow(lv, ["readme.txt", "2 KB", "Text"]);
+    wl_AddListViewRow(lv, ["photo.png", "1.2 MB", "Image"]);
+    wl_OnListViewSelect(lv, fn(index, cells) => print(cells[0]));
+
+FUNCTIONS
+    wl_CreateListView(x, y, w, h, columns)     columns is an array of
+                                               header labels; row cell
+                                               counts should match its
+                                               length (not enforced).
+    wl_AddListViewRow(lv, cells)                 cells is an array of
+                                               values, one per column.
+    wl_ClearListView(lv)                           Removes all rows (keeps
+                                               the header).
+    wl_OnListViewSelect(lv, fn)                     fn(index, cells).
+
+
+================================================================================
+  12. worlib.zl — CANVAS (drawing + raw pixel access)
+================================================================================
+
+    let cvs = wl_CreateCanvas(x, y, w, h);        w/h default to 320×240.
+
+The lowest-level drawing surface in worlib.zl — a real `<canvas>` with
+convenience wrappers PLUS unrestricted raw access via wl_GetContext.
+
+DRAWING FUNCTIONS
+    wl_GetContext(canvas)                Returns the real
+                                         CanvasRenderingContext2D. The
+                                         ultimate escape hatch — anything
+                                         Canvas2D can do, you can do,
+                                         even if there's no wl_Draw*
+                                         wrapper for it.
+    wl_Clear(canvas, color)                No color = transparent clear;
+                                         a color fills the whole canvas
+                                         with it instead.
+    wl_FillRect(canvas, x, y, w, h, color)
+    wl_DrawRect(canvas, x, y, w, h, color, lineWidth)      Outline only.
+    wl_FillCircle(canvas, x, y, r, color)
+    wl_DrawCircle(canvas, x, y, r, color, lineWidth)        Outline only.
+    wl_DrawLine(canvas, x1, y1, x2, y2, color, lineWidth)
+    wl_DrawText(canvas, text, x, y, color, size, font)
+
+RAW PIXEL ACCESS
+    wl_GetPixel(canvas, x, y)              Returns {r, g, b, a} — a is
+                                           0..1, r/g/b are 0..255.
+    wl_SetPixel(canvas, x, y, color)
+    wl_GetImageData(canvas, x, y, w, h)     Returns {data, width, height}
+                                           where data is a plain Array of
+                                           RGBA bytes (converted from the
+                                           browser's typed array for easy
+                                           use from ZPP). Omit x/y/w/h to
+                                           grab the whole canvas.
+    wl_PutImageData(canvas, imgData, x, y)   Writes an object shaped like
+                                           wl_GetImageData's return value
+                                           back onto the canvas.
+    wl_SaveCanvasAsImage(canvas, filename)     Triggers a PNG download of
+                                           the canvas's current contents.
+
+wl_GetPixel / wl_GetImageData are genuinely slow if called every frame at
+large sizes (they round-trip through the GPU) — fine for tools, editors,
+or occasional sampling; avoid them in a tight per-pixel animation loop.
+
+
+================================================================================
+  13. worlib.zl — IMAGE LOADING
+================================================================================
+
+    wl_LoadImage(src, callback)             callback(imgHandle | null).
+    wl_PickImageFile(callback)                Opens the native file picker
+                                             filtered to images, then loads
+                                             whichever file is chosen the
+                                             same way wl_LoadImage does.
+    wl_DrawImage(canvas, img, x, y, w, h)      w/h optional — omit to draw
+                                             at the image's natural size.
+    wl_ImageToDataURL(img)                      Returns a base64 data URL.
+                                             Works on an image handle OR a
+                                             canvas handle.
+
+An image handle has wl_width / wl_height set to the image's natural pixel
+dimensions once loaded.
+
+
+================================================================================
+  14. worlib.zl — TEXT FILE I/O
+================================================================================
+
+    wl_SaveTextFile(filename, content)        Triggers a normal browser
+                                              download. Returns true.
+    wl_OpenTextFile(callback, accept)           Opens the native file
+                                              picker. callback(content,
+                                              filename) on success, or
+                                              callback(null, null) if the
+                                              user cancels. accept defaults
+                                              to ".txt,.zpp,.zl,.md,.json,
+                                              text/plain".
+
+The only way to move plain text in and out of the browser sandbox — this
+is what makes a real Save/Open menu possible in something like a code
+editor built with worlib.zl.
+
+
+================================================================================
+  15. worlib.zl — DIALOGS
+================================================================================
+
+Three ready-made modal-style popups, each a small retro window under the
+hood.
+
+    wl_MessageBox(message, title)               OK-only alert with an "ℹ"
+                                                icon. Returns the popup's
+                                                window handle.
+    wl_ConfirmBox(message, callback, title)       Yes/No buttons.
+                                                callback(true | false).
+    wl_InputBox(message, callback, title, defaultValue)
+                                                A text field with OK/
+                                                Cancel. callback(text) on
+                                                OK, callback(null) on
+                                                Cancel. Pressing Enter in
+                                                the field submits it. The
+                                                field is auto-focused.
+
+
+================================================================================
+  16. worlib.zl — INPUT (keyboard / mouse / hotkeys)
+================================================================================
+
+GLOBAL KEYBOARD / MOUSE
+    wl_IsKeyDown(key)                     Polls whether a key is currently
+                                          held (checks both e.key and
+                                          e.code, so both "a" and "KeyA"
+                                          style names work).
+    wl_OnKeyDown(fn)                        fn(key, code, event) on every
+                                          keydown, document-wide.
+    wl_OnKeyUp(fn)                           fn(key, code, event).
+    wl_GetMousePos()                          Returns {x, y} in viewport
+                                          coordinates (not relative to any
+                                          particular widget).
+
+HOTKEYS
+    wl_OnHotkey(combo, fn)                     combo is a string like
+                                          "ctrl+s" or "ctrl+shift+n".
+                                          Recognizes ctrl/cmd/meta (treated
+                                          interchangeably so shortcuts work
+                                          cross-platform), shift, and alt.
+                                          The matching keydown automatically
+                                          gets preventDefault() called, so
+                                          it won't also trigger the
+                                          browser's own shortcut. Returns
+                                          an unregister function:
+                                              let off = wl_OnHotkey("ctrl+s", fn);
+                                              off();   // shortcut removed
+
+GENERIC EVENT BINDING (works on ANY widget handle)
+    wl_On(handle, event, fn)                   event is any raw DOM event
+                                          name: "click", "input", "change",
+                                          "mousedown", "mouseenter", etc.
+                                          fn(event, handle) is called. This
+                                          is deliberately low-level and
+                                          uniform rather than each widget
+                                          inventing its own named events.
+    wl_Off(handle, event, fn)                    Removes a listener
+                                          previously added with wl_On
+                                          (must be the exact same fn
+                                          reference).
+
+Note on checkbox/radio/slider/combo internals: wl_On automatically binds to
+the widget's real `<input>`/`<select>` element where one exists (checkbox,
+radio, slider, edit box, combo box) rather than its outer wrapper, so
+"change"/"input" events fire correctly without you needing to know that
+detail.
+
+
+================================================================================
+  17. worlib.zl — GENERIC PROPERTY FUNCTIONS
+================================================================================
+
+These apply broadly across most widget kinds — one small set of functions
+instead of a different setter name per widget type.
+
+    wl_SetPos(handle, x, y)
+    wl_SetSize(handle, w, h)
+    wl_SetText(handle, text)          Smart per-kind: sets .value for edit
+                                      boxes/text areas/combo boxes, the
+                                      title for windows, the label span for
+                                      checkboxes/radios, or textContent for
+                                      everything else.
+    wl_GetText(handle)                  The matching getter.
+    wl_SetValue(handle, value)            Smart per-kind: bool for
+                                      checkbox/radio, a number for
+                                      slider/progress bar, a string for
+                                      edit box/text area/combo box.
+    wl_GetValue(handle)                    The matching getter.
+    wl_SetVisible(handle, visible)           Toggles display:none.
+    wl_SetEnabled(handle, enabled)             Dims the widget (opacity
+                                      0.5) and disables pointer events /
+                                      the underlying `<input>`'s disabled
+                                      flag where applicable.
+    wl_SetStyle(handle, cssText)               RAW CSS ESCAPE HATCH —
+                                      appends arbitrary CSS declarations
+                                      directly onto the element's inline
+                                      style. This is the guarantee that
+                                      nothing worlib.zl doesn't already
+                                      expose is ever truly out of reach:
+                                          wl_SetStyle(label, "font-weight:bold;color:red;");
+    wl_SetBevel(handle, mode)                    mode is "raised" |
+                                      "sunken" | "flat" | "none" — reapply
+                                      the classic 3D border look to any
+                                      element, including ones you've
+                                      styled yourself.
+    wl_Destroy(handle)                              Removes the widget
+                                      from the DOM (calls wl_CloseWindow
+                                      internally for window handles, so
+                                      close callbacks still run).
+    wl_Focus(handle)                                  Gives keyboard focus
+                                      — focuses the inner `<input>` where
+                                      one exists, otherwise the element
+                                      itself.
+
+
+================================================================================
+  18. worlib.zl — LOOP & TIMING
+================================================================================
+
+    wl_StartLoop(fn, fps)               fps defaults to 60. Returns a loop
+                                        id. fn(dt, elapsedSeconds) is
+                                        called on each tick — dt is
+                                        seconds since the last tick,
+                                        elapsedSeconds is seconds since the
+                                        loop started (well, since
+                                        requestAnimationFrame's origin —
+                                        treat it as a monotonically
+                                        increasing clock, not wall-clock
+                                        time).
+    wl_StopLoop(id)                       Stops a loop started with
+                                        wl_StartLoop.
+    wl_Now()                                Returns Date.now() — wall-clock
+                                        milliseconds since the Unix epoch.
+    wl_SetTimeout(fn, ms)                     Thin wrapper over the
+                                        browser's setTimeout — returns a
+                                        timer id.
+    wl_ClearTimeout(id)                         Cancels it.
+
+wl_StartLoop is a general-purpose heartbeat — useful well beyond canvas
+animation: driving a clock display, polling something, animating any
+widget's position/size over time, etc.
+
+
+================================================================================
+  19. worlib.zl — SOUND
+================================================================================
+
+    wl_Beep(frequency, durationMs)          frequency in Hz (default 800),
+                                            duration in ms (default 120).
+                                            A short square-wave beep via
+                                            WebAudio — the classic PC
+                                            speaker sound, good for retro
+                                            UI feedback (errors, alerts).
+    wl_LoadSound(src, callback)              Loads an audio file.
+                                            callback(soundHandle | null)
+                                            once it's ready to play.
+    wl_PlaySound(sound)                        Plays from the start
+                                            (rewinds currentTime to 0
+                                            first, so rapid repeat calls
+                                            restart cleanly).
+    wl_StopSound(sound)                          Pauses and rewinds.
+    wl_SetVolume(sound, vol)                       0.0 .. 1.0, clamped.
+
+
+================================================================================
+  20. worlib.zl — UTILITY
+================================================================================
+
+    wl_IsHandle(v)              Returns true if v looks like a worlib.zl
+                                handle (has a string wl_kind field).
+    wl_CloseAllWindows()          Closes every currently open window (runs
+                                each one's close callbacks).
+    wl_AllWindows()                 Returns an array of every currently
+                                open window handle.
+    wl_Log(win, text)                  Appends one line of monospaced text
+                                into a window's body — a quick way to
+                                build a console/log panel without managing
+                                label widgets yourself. Auto-scrolls to the
+                                bottom.
+
+
+================================================================================
+  21. worlib_structs.zpp — STRUCTS
+================================================================================
+
+Real ZPP structs (not JS objects pretending to be structs) that pair with
+worlib.zl. Import this file alongside worlib.zl if you want typed values
+instead of raw numbers everywhere — every worlib.zl function that takes a
+position/size/color accepts EITHER one of these structs OR plain numbers.
+
+    struct wl_Point { num x; num y; }
+        .distanceTo(other)      Euclidean distance to another wl_Point.
+        .add(other)                Returns a new wl_Point, componentwise
+                                  sum.
+
+    struct wl_Size { num w; num h; }
+        .area()                   Returns w * h.
+
+    struct wl_Rect { num x; num y; num w; num h; }
+        .contains(pt)               True if pt (a wl_Point) is inside the
+                                  rect, inclusive of edges.
+        .intersects(other)             True if this rect overlaps another
+                                  wl_Rect at all.
+        .center()                        Returns a wl_Point at the
+                                  rect's center.
+
+    struct wl_Color { num r; num g; num b; num a; }
+        .toCSS()                          Returns a "rgba(r,g,b,a)"
+                                  string.
+
+READY-MADE COLOR CONSTANTS
+    WL_BLACK, WL_WHITE, WL_RED, WL_GREEN, WL_BLUE, WL_GRAY
+
+EXAMPLE
+    wl_Point pos = { x: 100, y: 80 };
+    wl_Size size = { w: 400, h: 300 };
+    let win = wl_CreateWindow("My App", pos.x, pos.y, size.w, size.h);
+    wl_SetWindowBackground(win, WL_GRAY.toCSS());
+
+
+================================================================================
+  22. worgame.zl — GAME & LOOP
+================================================================================
+
+    let game = wg_CreateGame(title, w, h);       w/h default to 640×480.
+
+If worlib.zl was imported BEFORE worgame.zl, this opens inside a real
+retro worlib.zl window (draggable, closable, titled) with the game canvas
+mounted inside it. If worlib.zl was not imported, it falls back to a
+plain floating `<canvas>` with a thin border — worgame.zl never requires
+worlib.zl to work.
+
+FUNCTIONS
+    wg_CreateGame(title, w, h)
+    wg_SetBackground(game, color)          The fill color wg_Run clears the
+                                           canvas to every frame before
+                                           your render callback runs.
+                                           Defaults to black.
+    wg_GetContext(game)                      Returns the raw
+                                           CanvasRenderingContext2D — the
+                                           escape hatch for anything not
+                                           covered by the wg_Draw* helpers.
+    wg_Run(game, updateFn, renderFn)           Starts the game loop.
+                                           updateFn(dt) is called first
+                                           each frame (dt is clamped to a
+                                           max of 1/20s so a lag spike
+                                           can't cause a huge physics
+                                           jump). Then the canvas is
+                                           cleared to the background color,
+                                           the camera transform is applied,
+                                           and renderFn(ctx) is called. If
+                                           you omit renderFn entirely, all
+                                           entities are drawn automatically
+                                           via wg_DrawAllSprites instead.
+    wg_Stop(game)                               Stops the loop. Safe to
+                                           call more than once.
+
+TYPICAL SHAPE
+    let game = wg_CreateGame("My Game", 640, 480);
+    let player = wg_CreateSprite(300, 200, 20, 20, "#0f0");
+    wg_AddEntity(game, player);
+
+    wg_Run(game, fn(dt) => {
+        if (wg_KeyDown(game, "ArrowRight")) { player.wg_x += 200 * dt; }
+    }, fn(ctx) => {
+        wg_DrawAllSprites(game);
+        wg_DrawText(game, "Score: 0", 10, 20, "#fff", 16);
+    });
+
+
+================================================================================
+  23. worgame.zl — SPRITES / ENTITIES
+================================================================================
+
+    let sprite = wg_CreateSprite(x, y, w, h, color);    w/h default to 20×20.
+
+Not a strict entity-component system — a sprite is just a plain handle
+with position/velocity/color/image fields you read and write directly.
+See section 3 for the full field list.
+
+FUNCTIONS
+    wg_CreateSprite(x, y, w, h, color)
+    wg_SetSpriteImage(sprite, imgHandle)      Accepts a handle from
+                                              wg_LoadImage, wl_LoadImage,
+                                              or wg_LoadSpriteSheet-drawn
+                                              frames — once set, wg_DrawSprite
+                                              draws the image instead of a
+                                              flat color rectangle.
+    wg_AddEntity(game, entity)                  Registers a sprite with the
+                                              game so wg_DrawAllSprites
+                                              picks it up.
+    wg_RemoveEntity(game, entity)
+    wg_UpdateSpritePhysics(sprite, dt)             Convenience: applies
+                                              sprite.wg_vx/wg_vy to its
+                                              position, scaled by dt.
+                                              Entirely optional — you can
+                                              always move a sprite by hand.
+    wg_DrawSprite(game, sprite)                       Draws one sprite,
+                                              respecting its rotation, the
+                                              active camera transform, and
+                                              its image if set (falls back
+                                              to a flat wg_color rectangle
+                                              otherwise). Skips drawing if
+                                              wg_visible is false.
+    wg_DrawAllSprites(game)                             Draws every
+                                              entity in game.wg_entities
+                                              whose wg_active is true. This
+                                              is what runs automatically
+                                              if you don't pass a renderFn
+                                              to wg_Run.
+
+
+================================================================================
+  24. worgame.zl — COLLISION
+================================================================================
+
+    wg_CollideAABB(a, b)          Axis-aligned bounding box overlap test.
+                                  Works on any two objects with wg_x, wg_y,
+                                  wg_width, wg_height fields (sprites, or
+                                  anything shaped like one).
+    wg_CollideCircle(a, b)          Circle overlap test. Uses wg_radius if
+                                  present on each object, otherwise falls
+                                  back to wg_width / 2.
+    wg_PointInRect(px, py, rect)      rect can use either wg_x/wg_y/
+                                  wg_width/wg_height OR plain x/y/w/h
+                                  fields.
+
+These are pure functions — they don't move or resolve anything, just
+report whether an overlap exists. If you need real physical collision
+RESPONSE (bouncing, pushing apart, mass-aware resolution), that's what
+worphisics.zl is for (sections 32-35); pair a body's position with a
+sprite via wp_SyncToSprite each frame.
+
+
+================================================================================
+  25. worgame.zl — CAMERA
+================================================================================
+
+Every game handle has a game.wg_camera = {x, y, zoom} that wg_Run applies
+as a canvas transform before calling your render callback (translate by
+-camera.x/-camera.y, then scale by camera.zoom).
+
+    wg_SetCamera(game, x, y, zoom)         zoom is optional — omit to leave
+                                           the current zoom unchanged.
+    wg_CameraFollow(game, target, smoothing)  Call this once per frame
+                                           (typically in your updateFn) to
+                                           smoothly move the camera toward
+                                           centering target.wg_x/wg_y in
+                                           the viewport. smoothing is 0..1,
+                                           defaults to 0.1 (higher = snaps
+                                           faster, lower = lazier/floatier
+                                           follow).
+
+
+================================================================================
+  26. worgame.zl — INPUT
+================================================================================
+
+Each game handle tracks its own keyboard/mouse state independently (bound
+to both the game's canvas and the window, so it works whether or not the
+canvas specifically has focus).
+
+    wg_KeyDown(game, key)          True while key is held.
+    wg_KeyPressed(game, key)          True only on the exact frame key
+                                     transitioned from up to down — use
+                                     this for "fire once per press" actions
+                                     like jumping, not for continuous
+                                     movement (use wg_KeyDown for that).
+                                     Only valid inside/after a wg_Run frame
+                                     has ticked — the press/release edge
+                                     detection is computed once per frame
+                                     at the top of the loop.
+    wg_KeyReleased(game, key)          The release-edge equivalent of
+                                     wg_KeyPressed.
+    wg_MousePos(game)                    Returns {x, y} relative to the
+                                     game's canvas (not the viewport).
+    wg_MouseDown(game, button)             button is 0 (left), 1 (middle),
+                                     2 (right); defaults to 0.
+
+
+================================================================================
+  27. worgame.zl — TIMERS (COOLDOWNS)
+================================================================================
+
+A tiny utility for gating repeated actions (attack cooldowns, spawn
+timers, invulnerability windows, ...).
+
+    let cd = wg_Cooldown(seconds);
+    wg_TickCooldown(cd, dt);           call every frame with your dt
+    if (wg_IsCooldownDone(cd)) { fire(); wg_ResetCooldown(cd); }
+
+FUNCTIONS
+    wg_Cooldown(seconds)                    Returns {wg_remaining,
+                                            wg_duration}.
+    wg_TickCooldown(timer, dt)                 Counts wg_remaining down,
+                                            clamped at 0 (never goes
+                                            negative).
+    wg_IsCooldownDone(timer)                     True once wg_remaining
+                                            has reached 0.
+    wg_ResetCooldown(timer, seconds)                Restarts it. Omit
+                                            seconds to reuse the timer's
+                                            existing wg_duration.
+
+
+================================================================================
+  28. worgame.zl — TILEMAPS
+================================================================================
+
+    let map = wg_CreateTilemap(cols, rows, tileSize);   tileSize defaults
+                                                        to 32.
+    wg_SetTile(map, col, row, value);
+    wg_DrawTilemap(game, map, { 1: "#654321", 2: "#00aa00" });
+
+FUNCTIONS
+    wg_CreateTilemap(cols, rows, tileSize)      Starts fully zeroed (empty)
+                                               — tile value 0 means "empty"
+                                               by convention and is skipped
+                                               by wg_DrawTilemap.
+    wg_SetTile(map, col, row, value)               Out-of-bounds col/row
+                                               is silently ignored.
+    wg_GetTile(map, col, row)                        Returns 0 for
+                                               out-of-bounds or unset
+                                               tiles.
+    wg_DrawTilemap(game, map, tileColors)              tileColors maps
+                                               tile value -> CSS color
+                                               string. Any non-zero tile
+                                               without a matching color
+                                               falls back to gray
+                                               (#888888) rather than being
+                                               invisible.
+
+This is a flat grid renderer, not a scrolling engine on its own — combine
+it with the camera (section 25) for a scrolling level.
+
+
+================================================================================
+  29. worgame.zl — IMAGES & SPRITE SHEETS
+================================================================================
+
+    wg_LoadImage(src, callback)                callback(imgHandle | null).
+                                                Works standalone — you do
+                                                NOT need worlib.zl loaded
+                                                to load a plain image for a
+                                                sprite. wg_DrawSprite also
+                                                happily accepts an image
+                                                handle from worlib.zl's
+                                                wl_LoadImage instead, if
+                                                that's what you already
+                                                have.
+    wg_LoadSpriteSheet(src, frameW, frameH, callback)
+                                                Loads an image and slices
+                                                it into a frameW x frameH
+                                                grid. callback(sheetHandle)
+                                                with wg_cols/wg_rows
+                                                computed from the loaded
+                                                image's natural size.
+    wg_DrawFrame(game, sheet, frameIndex, x, y, scale)
+                                                Draws one frame from a
+                                                sprite sheet at (x, y).
+                                                frameIndex counts left-to-
+                                                right, top-to-bottom
+                                                starting at 0. scale
+                                                defaults to 1.
+
+
+================================================================================
+  30. worgame.zl — DRAWING HELPERS
+================================================================================
+
+Thin, self-contained wrappers over the raw Canvas2D context — these do NOT
+depend on worlib.zl even if it's loaded, so worgame.zl's rendering always
+works the same way regardless of which window backs it.
+
+    wg_Clear(game, color)                No color = re-fills with the
+                                         game's current background color.
+    wg_FillRect(game, x, y, w, h, color)
+    wg_DrawRect(game, x, y, w, h, color, lineWidth)     Outline only.
+    wg_FillCircle(game, x, y, r, color)
+    wg_DrawText(game, text, x, y, color, size, font)      size defaults to
+                                         16, font defaults to "monospace".
+
+Note there's no wg_DrawCircle (outline) or wg_DrawLine in worgame.zl —
+reach for wg_GetContext(game) and the raw Canvas2D API for anything not
+covered here (arc/line-stroke is one call away: `ctx.beginPath();
+ctx.moveTo(...); ctx.lineTo(...); ctx.stroke();`).
+
+
+================================================================================
+  31. worgame.zl — SOUND & UTILITY
+================================================================================
+
+    wg_LoadSound(src, callback)          callback(soundHandle | null).
+                                         Self-contained — doesn't require
+                                         worlib.zl.
+    wg_PlaySound(sound)                    Plays from the start.
+    wg_Now()                                 Returns Date.now().
+
+
+================================================================================
+  32. worphisics.zl — WORLD
+================================================================================
+
+    let world = wp_CreateWorld(gravityX, gravityY);
+                                          gravityX defaults to 0,
+                                          gravityY defaults to 900 (px/s²
+                                          downward — canvas Y grows
+                                          downward, so positive gravityY
+                                          pulls things down the screen).
+
+FUNCTIONS
+    wp_CreateWorld(gravityX, gravityY)
+    wp_SetGravity(world, gx, gy)             Change gravity at any time
+                                            (e.g. for a "moon gravity"
+                                            power-up).
+    wp_ClearWorld(world)                       Removes every body and
+                                            resets internal collision-pair
+                                            tracking — handy for restarting
+                                            a level without recreating the
+                                            whole world.
+
+
+================================================================================
+  33. worphisics.zl — BODIES
+================================================================================
+
+    let body = wp_CreateBody(x, y, w, h, shape);
+                                          shape is "box" or "circle".
+                                          For a circle, w is used as the
+                                          diameter (wp_radius = w / 2) and
+                                          h is optional (defaults to w).
+
+FUNCTIONS
+    wp_CreateBody(x, y, w, h, shape)
+    wp_AddBody(world, body)
+    wp_RemoveBody(world, body)
+    wp_SetStatic(body, isStatic)          A static body never moves and
+                                          has effectively infinite mass —
+                                          use this for the ground, walls,
+                                          and platforms.
+    wp_SetMass(body, mass)                  Clamped to a small positive
+                                          minimum so it can never divide by
+                                          zero.
+    wp_SetRestitution(body, r)                Clamped to 0..1. Two bodies'
+                                          restitution is averaged when they
+                                          collide.
+    wp_SetFriction(body, f)                     Clamped to 0..1. Applied
+                                          as a per-step velocity damping
+                                          factor (not a physically exact
+                                          drag model — simple and stable
+                                          rather than precise).
+    wp_ApplyForce(body, fx, fy)                   Accumulates a force that
+                                          gets integrated (divided by mass,
+                                          added to acceleration) on the
+                                          NEXT wp_Step call, then cleared.
+                                          Use this for continuous forces
+                                          like thrust or wind — call it
+                                          every frame you want it applied.
+    wp_ApplyImpulse(body, ix, iy)                   Instantly changes
+                                          velocity by impulse/mass — use
+                                          this for one-off effects like a
+                                          jump or an explosion, not
+                                          continuous forces. No-ops on
+                                          static bodies.
+    wp_SetVelocity(body, vx, vy)                      Directly overwrites
+                                          velocity.
+    wp_GetBodyRect(body)                                Returns a plain
+                                          {x, y, w, h} bounding box
+                                          regardless of shape — for a
+                                          circle this is its enclosing
+                                          square.
+    wp_SyncToSprite(body, target)                         Copies the
+                                          body's position onto any target
+                                          object — if target has a wg_x
+                                          field (a worgame.zl sprite) it
+                                          sets wg_x/wg_y; otherwise it sets
+                                          plain x/y. Call this once per
+                                          frame after wp_Step to keep a
+                                          sprite's visual position in sync
+                                          with its physics body — this is
+                                          the intended glue between
+                                          worphisics.zl and worgame.zl (or
+                                          any object of your own).
+
+
+================================================================================
+  34. worphisics.zl — COLLISION & STEPPING
+================================================================================
+
+    wp_IsColliding(a, b)          A pure yes/no test between two bodies —
+                                  circle-circle uses true distance-vs-
+                                  radii; anything involving a box uses
+                                  each body's AABB (wp_GetBodyRect),
+                                  including box-circle — this keeps the
+                                  narrow-phase test simple and reliable
+                                  rather than exact for every shape pair.
+
+    wp_Step(world, dt)              THE core simulation function — call
+                                  this once per frame with your frame's
+                                  delta time in seconds.
+                                  What it does, in order:
+                                    1. dt is clamped to a max of 1/20s so
+                                       a lag spike can't blow up the sim.
+                                    2. For every non-static body: gravity
+                                       and any accumulated wp_ApplyForce
+                                       are integrated into velocity,
+                                       friction damping is applied, then
+                                       velocity is integrated into
+                                       position. Accumulated forces are
+                                       cleared.
+                                    3. Every pair of bodies is checked for
+                                       overlap (naive O(n²) — simple and
+                                       predictable, well suited to the
+                                       tens-of-bodies scale this engine
+                                       targets, not thousands).
+                                    4. Overlapping pairs are separated
+                                       positionally (split proportionally
+                                       by inverse mass — a static body
+                                       never moves, a light body yields
+                                       more than a heavy one) and given a
+                                       standard impulse-based velocity
+                                       response along the axis of least
+                                       penetration, using the pair's
+                                       averaged restitution.
+                                    5. wp_OnCollisionEnter/Exit callbacks
+                                       fire for pairs that started/stopped
+                                       overlapping this step.
+
+KNOWN CHARACTERISTIC: resting contact (e.g. a ball settled on the ground)
+can show a very small amount of residual jitter in velocity rather than
+settling to exactly zero — this is normal, well-known behavior for a
+simple iterative impulse+position-correction solver like this one, not a
+bug. It stays small and stable; it won't grow or explode.
+
+SCOPE NOTE: there are deliberately no joints, springs, or constraints in
+worphisics.zl. Those are easy to get subtly wrong (energy gain, instability
+under certain configurations), so rather than ship something that mostly
+works, they're left out entirely. Bodies, gravity, forces/impulses, and
+collision response are the full feature set.
+
+
+================================================================================
+  35. worphisics.zl — COLLISION CALLBACKS
+================================================================================
+
+Edge-triggered — fired once when a pair starts overlapping, and once when
+it stops, not continuously every step while overlapping.
+
+    wp_OnCollisionEnter(world, fn)      fn(bodyA, bodyB) — called the step
+                                        a pair FIRST starts overlapping.
+                                        You can register more than one
+                                        callback; all of them run.
+    wp_OnCollisionExit(world, fn)          fn(pairKey) — called the step a
+                                        previously-overlapping pair STOPS
+                                        overlapping. Note this callback
+                                        currently receives the internal
+                                        pair key string (built from each
+                                        body's internal id), not the two
+                                        body handles directly — if you need
+                                        to know exactly which two bodies
+                                        separated, track that yourself
+                                        (e.g. keep a small map from pair
+                                        key to the two body references
+                                        when you see them in
+                                        wp_OnCollisionEnter).
+
+
+================================================================================
+  36. CROSS-LIBRARY INTEGRATION
+================================================================================
+
+worlib.zl, worgame.zl, and worphisics.zl are designed to compose, but none
+of them require each other:
+
+  worlib.zl alone        Build a plain retro desktop app / editor / tool.
+  worgame.zl alone        Build a game with its own plain floating canvas.
+  worphisics.zl alone       Run a headless physics simulation (no
+                          rendering at all) — e.g. compute trajectories,
+                          feed results elsewhere.
+
+  worlib.zl + worgame.zl     Import worlib.zl FIRST. wg_CreateGame() then
+                          automatically opens inside a real worlib.zl
+                          window instead of a bare canvas — you get
+                          dragging, closing, and a titlebar for free with
+                          no extra code on your part.
+
+  worgame.zl + worphisics.zl   Run wp_Step(world, dt) inside your wg_Run
+                          updateFn, then call wp_SyncToSprite(body, sprite)
+                          for each paired body/sprite so the physics
+                          position drives what gets drawn. See Example 3.
+
+  All three together        A full retro-styled game window with real
+                          physics, e.g. a pool/pinball toy.
+
+
+================================================================================
+  37. QUICK REFERENCE CARD
+================================================================================
+
+--- worlib.zl: WINDOWS -------------------------------------------------------
+  wl_CreateWindow(title,x,y,w,h)   wl_ShowWindow  wl_HideWindow  wl_CloseWindow
+  wl_SetWindowTitle  wl_MoveWindow  wl_ResizeWindow  wl_FocusWindow
+  wl_OnWindowClose  wl_SetWindowBackground  wl_AddChild
+
+--- worlib.zl: WIDGETS --------------------------------------------------------
+  wl_CreateLabel  wl_CreateButton  wl_CreateEditBox  wl_CreateTextArea
+  wl_CreateCheckbox  wl_CreateRadioButton  wl_CreateSlider
+  wl_CreateProgressBar  wl_CreateComboBox
+  wl_CreateListBox  wl_AddListItem  wl_ClearListBox  wl_GetSelectedIndex
+  wl_OnListSelect
+  wl_CreateGroupBox  wl_CreatePanel
+
+--- worlib.zl: CHROME ---------------------------------------------------------
+  wl_CreateMenu  wl_AddMenu  wl_AddMenuItem  wl_AddMenuSeparator  wl_SetMenu
+  wl_CreateToolbar  wl_AddToolbarButton
+  wl_CreateStatusBar  wl_SetStatusText  wl_SetStatusParts
+  wl_CreateTabControl  wl_AddTab  wl_SelectTab
+  wl_CreateTreeView  wl_AddTreeNode  wl_OnTreeSelect
+  wl_CreateListView  wl_AddListViewRow  wl_ClearListView  wl_OnListViewSelect
+
+--- worlib.zl: CANVAS / IMAGES / FILES ----------------------------------------
+  wl_CreateCanvas  wl_GetContext  wl_Clear  wl_FillRect  wl_DrawRect
+  wl_FillCircle  wl_DrawCircle  wl_DrawLine  wl_DrawText
+  wl_GetPixel  wl_SetPixel  wl_GetImageData  wl_PutImageData  wl_SaveCanvasAsImage
+  wl_LoadImage  wl_PickImageFile  wl_DrawImage  wl_ImageToDataURL
+  wl_SaveTextFile  wl_OpenTextFile
+
+--- worlib.zl: DIALOGS / INPUT / MISC ------------------------------------------
+  wl_MessageBox  wl_ConfirmBox  wl_InputBox
+  wl_IsKeyDown  wl_OnKeyDown  wl_OnKeyUp  wl_OnHotkey  wl_GetMousePos
+  wl_On  wl_Off
+  wl_SetPos  wl_SetSize  wl_SetText  wl_GetText  wl_SetValue  wl_GetValue
+  wl_SetVisible  wl_SetEnabled  wl_SetStyle  wl_SetBevel  wl_Destroy  wl_Focus
+  wl_StartLoop  wl_StopLoop  wl_Now  wl_SetTimeout  wl_ClearTimeout
+  wl_Beep  wl_LoadSound  wl_PlaySound  wl_StopSound  wl_SetVolume
+  wl_IsHandle  wl_CloseAllWindows  wl_AllWindows  wl_Log
+
+--- worlib_structs.zpp ---------------------------------------------------------
+  struct wl_Point { x, y }            .distanceTo()  .add()
+  struct wl_Size  { w, h }             .area()
+  struct wl_Rect  { x, y, w, h }        .contains()  .intersects()  .center()
+  struct wl_Color { r, g, b, a }         .toCSS()
+  WL_BLACK  WL_WHITE  WL_RED  WL_GREEN  WL_BLUE  WL_GRAY
+
+--- worgame.zl -------------------------------------------------------------------
+  wg_CreateGame  wg_SetBackground  wg_GetContext  wg_Run  wg_Stop
+  wg_CreateSprite  wg_SetSpriteImage  wg_AddEntity  wg_RemoveEntity
+  wg_UpdateSpritePhysics  wg_DrawSprite  wg_DrawAllSprites
+  wg_CollideAABB  wg_CollideCircle  wg_PointInRect
+  wg_SetCamera  wg_CameraFollow
+  wg_KeyDown  wg_KeyPressed  wg_KeyReleased  wg_MousePos  wg_MouseDown
+  wg_Cooldown  wg_TickCooldown  wg_IsCooldownDone  wg_ResetCooldown
+  wg_CreateTilemap  wg_SetTile  wg_GetTile  wg_DrawTilemap
+  wg_LoadImage  wg_LoadSpriteSheet  wg_DrawFrame
+  wg_Clear  wg_FillRect  wg_DrawRect  wg_FillCircle  wg_DrawText
+  wg_LoadSound  wg_PlaySound  wg_Now
+
+--- worphisics.zl -----------------------------------------------------------------
+  wp_CreateWorld  wp_SetGravity  wp_ClearWorld
+  wp_CreateBody  wp_AddBody  wp_RemoveBody
+  wp_SetStatic  wp_SetMass  wp_SetRestitution  wp_SetFriction
+  wp_ApplyForce  wp_ApplyImpulse  wp_SetVelocity
+  wp_GetBodyRect  wp_SyncToSprite
+  wp_IsColliding  wp_OnCollisionEnter  wp_OnCollisionExit
+  wp_Step
+
+
+================================================================================
+  38. EXAMPLES
+================================================================================
+
+--------------------------------------------------------------------------------
+EXAMPLE 1 — A small retro utility window (worlib.zl only)
+--------------------------------------------------------------------------------
+A tip-calculator-style tool showing windows, a menu, widgets, and dialogs.
+
+    #import["worlib.zl"];
+
+    let win = wl_CreateWindow("Tip Calculator", 200, 150, 320, 220);
+
+    let menu = wl_CreateMenu();
+    let fileMenu = wl_AddMenu(menu, "File");
+    wl_AddMenuItem(fileMenu, "About", fn() => {
+        wl_MessageBox("A tiny retro tip calculator.", "About");
+    });
+    wl_AddMenuItem(fileMenu, "Exit", fn() => wl_CloseWindow(win));
+    wl_SetMenu(win, menu);
+
+    wl_AddChild(win, wl_CreateLabel("Bill amount:", 14, 34));
+    let billField = wl_CreateEditBox("0.00", 120, 32, 100, 20);
+    wl_AddChild(win, billField);
+
+    wl_AddChild(win, wl_CreateLabel("Tip %:", 14, 64));
+    let tipSlider = wl_CreateSlider(120, 64, 100, 0, 30, 15);
+    wl_AddChild(win, tipSlider);
+
+    let resultLabel = wl_CreateLabel("Tip: $0.00", 14, 100);
+    wl_AddChild(win, resultLabel);
+
+    func recalc() {
+        num bill = toNum(wl_GetValue(billField));
+        num pct = wl_GetValue(tipSlider);
+        num tip = bill * (pct / 100);
+        wl_SetText(resultLabel, "Tip (#pct#%): $#tip#");
+    }
+
+    wl_On(billField, "input", fn(e, h) => recalc());
+    wl_On(tipSlider, "input", fn(e, h) => recalc());
+
+    let calcBtn = wl_CreateButton("Clear", 14, 140, 80, 24);
+    wl_AddChild(win, calcBtn);
+    wl_On(calcBtn, "click", fn(e, h) => {
+        wl_ConfirmBox("Reset the bill amount?", fn(yes) => {
+            if yes { wl_SetValue(billField, "0.00"); recalc(); }
+        }, "Clear");
+    });
+
+    wl_OnHotkey("ctrl+q", fn(e) => wl_CloseWindow(win));
+    recalc();
+
+--------------------------------------------------------------------------------
+EXAMPLE 2 — A tiny top-down game (worgame.zl only, standalone)
+--------------------------------------------------------------------------------
+A player square that moves with arrow keys and collects a coin.
+
+    #import["worgame.zl"];
+
+    let game = wg_CreateGame("Coin Grab", 480, 320);
+    wg_SetBackground(game, "#101018");
+
+    let player = wg_CreateSprite(20, 20, 20, 20, "#3fd0ff");
+    let coin = wg_CreateSprite(random() * 440, random() * 280, 12, 12, "#ffd23f");
+    wg_AddEntity(game, player);
+    wg_AddEntity(game, coin);
+
+    num score = 0;
+
+    wg_Run(game,
+        fn(dt) => {
+            num speed = 160;
+            if wg_KeyDown(game, "ArrowLeft")  { player.wg_x -= speed * dt; }
+            if wg_KeyDown(game, "ArrowRight") { player.wg_x += speed * dt; }
+            if wg_KeyDown(game, "ArrowUp")    { player.wg_y -= speed * dt; }
+            if wg_KeyDown(game, "ArrowDown")  { player.wg_y += speed * dt; }
+
+            if wg_CollideAABB(player, coin) {
+                score = score + 1;
+                coin.wg_x = random() * 440;
+                coin.wg_y = random() * 280;
+            }
+        },
+        fn(ctx) => {
+            wg_DrawAllSprites(game);
+            wg_DrawText(game, "Score: #score", 10, 20, "#fff", 16);
+        }
+    );
+
+--------------------------------------------------------------------------------
+EXAMPLE 3 — Physics-driven bouncing balls (worgame.zl + worphisics.zl)
+--------------------------------------------------------------------------------
+Balls drop onto a static floor and bounce, rendered through worgame's
+sprite system — this is the intended way the two engines connect.
+
+    #import["worgame.zl"];
+    #import["worphisics.zl"];
+
+    let game = wg_CreateGame("Bouncy Balls", 500, 400);
+    let world = wp_CreateWorld(0, 700);
+
+    let floor = wp_CreateBody(0, 380, 500, 20, "box");
+    wp_SetStatic(floor, true);
+    wp_AddBody(world, floor);
+
+    array balls = [];
+    for (num i = 0; i < 8; i = i + 1) {
+        let body = wp_CreateBody(40 + i * 50, 20, 24, 24, "circle");
+        wp_SetRestitution(body, 0.6);
+        wp_AddBody(world, body);
+
+        let sprite = wg_CreateSprite(body.wp_x, body.wp_y, 24, 24, "#ff6b6b");
+        wg_AddEntity(game, sprite);
+
+        balls.push({ body: body, sprite: sprite });
+    }
+
+    wp_OnCollisionEnter(world, fn(a, b) => {
+        print("thump!");
+    });
+
+    wg_Run(game,
+        fn(dt) => {
+            wp_Step(world, dt);
+            for each pair in balls {
+                wp_SyncToSprite(pair.body, pair.sprite);
+            }
+        },
+        fn(ctx) => {
+            wg_FillRect(game, 0, 380, 500, 20, "#444");   // draw the floor
+            wg_DrawAllSprites(game);
+        }
+    );
+
+--------------------------------------------------------------------------------
+EXAMPLE 4 — Headless physics, no rendering at all (worphisics.zl only)
+--------------------------------------------------------------------------------
+Useful for quick "what happens if..." calculations without opening any
+window — e.g. checking how long a projectile takes to land.
+
+    #import["worphisics.zl"];
+
+    let world = wp_CreateWorld(0, 900);
+    let ground = wp_CreateBody(0, 500, 1000, 20, "box");
+    wp_SetStatic(ground, true);
+    wp_AddBody(world, ground);
+
+    let ball = wp_CreateBody(0, 0, 10, 10, "circle");
+    wp_SetVelocity(ball, 120, -300);   // launched up and to the right
+    wp_AddBody(world, ball);
+
+    num t = 0;
+    num dt = 1 / 60;
+    bool landed = false;
+    wp_OnCollisionEnter(world, fn(a, b) => { landed = true; });
+
+    while (!landed && t < 10) {
+        wp_Step(world, dt);
+        t = t + dt;
+    }
+
+    print("Landed after #t seconds at x=#ball.wp_x");
+
+================================================================================
+  END OF DOCUMENTATION
+  worlib.zl / worgame.zl / worphisics.zl — companion library reference for ZETA++
+================================================================================

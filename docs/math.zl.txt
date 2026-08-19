@@ -1,0 +1,167 @@
+================================================================
+  ZPP LIBRARY: math.zl
+  Extended Mathematics
+================================================================
+
+Import with:
+  #import["math.zl"];
+
+Provides advanced math utilities including number theory,
+combinatorics, geometry, statistics, and matrix operations.
+
+----------------------------------------------------------------
+  ANGLE CONVERSION
+----------------------------------------------------------------
+
+degrees(radians)
+  Converts an angle from radians to degrees.
+
+radians(degrees)
+  Converts an angle from degrees to radians.
+
+----------------------------------------------------------------
+  TRIG WITH DEGREE INPUT
+  (Convenience wrappers — input is in degrees, not radians)
+----------------------------------------------------------------
+
+sinD(degrees)
+  Returns the sine of an angle given in degrees.
+
+cosD(degrees)
+  Returns the cosine of an angle given in degrees.
+
+tanD(degrees)
+  Returns the tangent of an angle given in degrees.
+
+----------------------------------------------------------------
+  ROUNDING & SCALING
+----------------------------------------------------------------
+
+truncate(x)
+  Removes the fractional part of x, rounding toward zero.
+  Example: truncate(3.9) → 3,  truncate(-3.9) → -3
+
+sign(x)
+  Returns -1 if x is negative, 0 if x is zero, 1 if positive.
+
+clamp(x, low, high)
+  Constrains x to the range [low, high].
+  If x < low, returns low. If x > high, returns high.
+
+lerp(a, b, t)
+  Linear interpolation between a and b.
+  t = 0 returns a, t = 1 returns b, values between give a
+  proportional blend. t is not restricted to [0, 1].
+
+map(x, fromLow, fromHigh, toLow, toHigh)
+  Re-maps a number x from one range to another.
+  Example: map(5, 0, 10, 0, 100) → 50
+
+pi()
+  Returns the value of π (same as the PI constant).
+
+sqrt(x)
+  Returns the square root of x.
+
+----------------------------------------------------------------
+  NUMBER THEORY
+----------------------------------------------------------------
+
+factorial(n)
+  Returns the factorial of n (n!).
+  Works on non-negative integers. The sign and fraction are
+  stripped: factorial(3.9) is treated as factorial(3).
+  factorial(0) and factorial(1) both return 1.
+
+isPrime(n)
+  Returns true if n is a prime number, false otherwise.
+  Numbers less than 2 are not prime.
+
+gcd(a, b)
+  Returns the greatest common divisor of a and b using the
+  Euclidean algorithm. Works on positive integers.
+
+lcm(a, b)
+  Returns the least common multiple of a and b.
+  Returns 0 if either a or b is 0.
+
+fibonacci(n)
+  Returns the nth Fibonacci number (0-indexed).
+  fibonacci(0) → 0,  fibonacci(1) → 1,  fibonacci(7) → 13
+
+fibSequence(n)
+  Returns an array containing the first n Fibonacci numbers.
+  Example: fibSequence(6) → [0, 1, 1, 2, 3, 5]
+
+primes(n)
+  Returns an array of all prime numbers up to and including n,
+  computed using the Sieve of Eratosthenes.
+  Example: primes(20) → [2, 3, 5, 7, 11, 13, 17, 19]
+
+----------------------------------------------------------------
+  COMBINATORICS
+----------------------------------------------------------------
+
+combination(n, r)
+  Returns the number of ways to choose r items from n items
+  without regard to order (n choose r, or C(n, r)).
+  Returns 0 if r > n.
+
+permutation(n, r)
+  Returns the number of ordered arrangements of r items chosen
+  from n items (P(n, r)).
+  Returns 0 if r > n.
+
+----------------------------------------------------------------
+  GEOMETRY
+----------------------------------------------------------------
+
+hypot(x, y, ...)
+  Returns the Euclidean length of the vector formed by the
+  given components (the hypotenuse). Accepts any number of
+  arguments.
+
+distance2D(x1, y1, x2, y2)
+  Returns the straight-line distance between two points in
+  2-dimensional space.
+
+distance3D(x1, y1, z1, x2, y2, z2)
+  Returns the straight-line distance between two points in
+  3-dimensional space.
+
+----------------------------------------------------------------
+  STATISTICS
+----------------------------------------------------------------
+
+median(array)
+  Returns the median (middle value) of the numeric array.
+  For even-length arrays, returns the average of the two
+  middle values.
+
+mode(array)
+  Returns the value that appears most frequently in the array.
+  If multiple values tie for most frequent, one is returned.
+
+variance(array)
+  Returns the population variance of the numeric array.
+  This measures how spread out the values are from the mean.
+
+stddev(array)
+  Returns the population standard deviation of the numeric
+  array (the square root of the variance).
+
+----------------------------------------------------------------
+  MATRIX OPERATIONS
+  (Matrices are represented as 2D arrays — arrays of arrays)
+----------------------------------------------------------------
+
+matMul(A, B)
+  Multiplies matrix A by matrix B and returns the result.
+  The number of columns in A must equal the number of rows
+  in B. Standard matrix multiplication rules apply.
+
+matTranspose(A)
+  Returns the transpose of matrix A.
+  Rows become columns and columns become rows.
+
+================================================================

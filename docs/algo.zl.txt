@@ -1,0 +1,180 @@
+================================================================
+  ZPP LIBRARY: algo.zl
+  Data Structures & Graph Algorithms
+================================================================
+
+Import with:
+  #import["algo.zl"];
+
+Provides factory functions for classic data structures: Stack,
+Queue, Min Priority Queue, Linked List, and Graph. Each factory
+returns an object whose methods operate on the structure.
+
+----------------------------------------------------------------
+  STACK
+  A last-in, first-out (LIFO) collection.
+----------------------------------------------------------------
+
+makeStack()
+  Creates and returns a new empty Stack.
+
+  Methods on the returned Stack:
+
+  push(value)
+    Adds value to the top of the stack.
+
+  pop()
+    Removes and returns the top value of the stack.
+    Throws an error if the stack is empty ("Stack underflow").
+
+  peek()
+    Returns the top value without removing it.
+    Returns undefined if the stack is empty.
+
+  isEmpty()
+    Returns true if the stack contains no elements.
+
+  toArray()
+    Returns a copy of the stack contents as an array,
+    with the bottom element first and top element last.
+
+  Properties:
+  size  — the number of elements currently in the stack.
+
+----------------------------------------------------------------
+  QUEUE
+  A first-in, first-out (FIFO) collection.
+----------------------------------------------------------------
+
+makeQueue()
+  Creates and returns a new empty Queue.
+
+  Methods on the returned Queue:
+
+  enqueue(value)
+    Adds value to the back of the queue.
+
+  dequeue()
+    Removes and returns the front value of the queue.
+    Throws an error if the queue is empty ("Queue empty").
+
+  peek()
+    Returns the front value without removing it.
+    Returns undefined if the queue is empty.
+
+  isEmpty()
+    Returns true if the queue contains no elements.
+
+  size()
+    Returns the number of elements currently in the queue.
+
+  toArray()
+    Returns a copy of the queue contents as an array,
+    with the front element first.
+
+----------------------------------------------------------------
+  MIN PRIORITY QUEUE
+  Elements are dequeued in order of lowest priority value first.
+----------------------------------------------------------------
+
+makeMinPQ()
+  Creates and returns a new empty Min Priority Queue backed by
+  a binary min-heap.
+
+  Methods on the returned Min Priority Queue:
+
+  push(value, priority)
+    Inserts value into the queue with the given numeric priority.
+    Lower priority numbers come out first.
+
+  pop()
+    Removes and returns the value with the lowest priority.
+    Throws an error if the queue is empty ("PriorityQueue empty").
+
+  peek()
+    Returns the value with the lowest priority without removing
+    it. Returns undefined if the queue is empty.
+
+  isEmpty()
+    Returns true if the queue contains no elements.
+
+  size()
+    Returns the number of elements currently in the queue.
+
+----------------------------------------------------------------
+  LINKED LIST
+  A singly-linked list.
+----------------------------------------------------------------
+
+makeNode(value)
+  Creates and returns a raw linked list node with the given
+  value. The node has a val field and a next field (initially
+  null). Most programs should use makeLinkedList instead of
+  building nodes manually.
+
+makeLinkedList()
+  Creates and returns a new empty Linked List.
+
+  Methods on the returned Linked List:
+
+  push(value)
+    Appends value to the end of the list.
+
+  pop()
+    Removes and returns the value at the end of the list.
+    Throws an error if the list is empty ("List empty").
+
+  toArray()
+    Traverses the list from head to tail and returns all values
+    as a plain ZPP array.
+
+  Properties:
+  head  — the first node in the list (or null if empty).
+  size  — the number of nodes in the list.
+
+----------------------------------------------------------------
+  GRAPH
+  An adjacency-list graph supporting directed or undirected
+  edges and weighted edges.
+----------------------------------------------------------------
+
+makeGraph(directed?)
+  Creates and returns a new empty Graph.
+  directed (default: false)
+    When false, adding an edge A → B also automatically adds
+    the reverse edge B → A (undirected).
+    When true, edges only go in the direction specified.
+
+  Methods on the returned Graph:
+
+  addNode(name)
+    Adds a node with the given name to the graph. If the node
+    already exists, this has no effect.
+
+  addEdge(from, to, weight?)
+    Adds an edge from node from to node to with an optional
+    numeric weight (default 1). Both nodes are created
+    automatically if they do not exist yet.
+
+  neighbors(name)
+    Returns an array of the names of all nodes that can be
+    reached directly from the node named name.
+
+  bfs(startNode)
+    Performs a Breadth-First Search starting from startNode.
+    Returns an array of node names in the order they were
+    visited, exploring neighbours level by level.
+
+  dfs(startNode)
+    Performs a Depth-First Search starting from startNode.
+    Returns an array of node names in the order they were
+    visited, going as deep as possible before backtracking.
+
+  dijkstra(startNode)
+    Runs Dijkstra's shortest-path algorithm from startNode.
+    Returns an object mapping every node name to the minimum
+    total weight of the path from startNode to that node.
+    Nodes that are unreachable have a distance of Infinity.
+    Requires all edge weights to be non-negative.
+
+================================================================

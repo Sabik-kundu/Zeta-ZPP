@@ -1,0 +1,98 @@
+// showcase.zpp — ZETA++ v6 Feature Showcase
+
+// ── 1. Variables & Types ─────────────────────────────────────
+num score    = 95;
+str player   = "Alice";
+bool active  = true;
+let items    = ["sword", "shield", "potion"];
+
+print("Player: " + player + " | Score: " + score);
+
+// ── 2. String interpolation ──────────────────────────────────
+print("Active: " + active + " | Items: " + len(items));
+
+// ── 3. For loop with range ───────────────────────────────────
+print("Counting:");
+for i in 1 to 5 {
+  print("  " + i);
+}
+
+// ── 4. For-each ──────────────────────────────────────────────
+print("Inventory:");
+for each item in items {
+  print("  - " + item);
+}
+
+// ── 5. Functions ─────────────────────────────────────────────
+func greet(name, greeting = "Hello") {
+  print(greeting + ", " + name + "!");
+}
+
+greet("Bob");
+greet("Alice", "Welcome");
+
+// ── 6. Structs ───────────────────────────────────────────────
+struct Hero {
+  str name;
+  num hp;
+  num attack;
+  fn isAlive() { return self.hp > 0; }
+  fn describe() {
+    print("Hero " + self.name + " — HP:" + self.hp + " ATK:" + self.attack);
+  }
+}
+
+Hero h;
+h.name   = "Zeta";
+h.hp     = 100;
+h.attack = 25;
+h.describe();
+print("Alive: " + h.isAlive());
+
+// ── 7. Ternary expression ────────────────────────────────────
+str status = when h.hp > 50 then "healthy" else "critical";
+print("Status: " + status);
+
+// ── 8. Match / pattern-match ─────────────────────────────────
+num level = 3;
+match level {
+  on 1 => { print("Beginner"); }
+  on 2 => { print("Intermediate"); }
+  on 3 => { print("Advanced"); }
+  else => { print("Unknown level"); }
+}
+
+// ── 9. Attempt / rescue ──────────────────────────────────────
+attempt {
+  raise "Something went wrong!";
+} rescue e {
+  print("Caught error: " + e);
+}
+
+// ── 10. Lambdas & functional arrays ──────────────────────────
+let nums    = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+let evens   = nums.filter(fn(n) => n % 2 == 0);
+let doubled = evens.map(fn(n) => n * 2);
+let total   = doubled.reduce(fn(acc, n) => acc + n, 0);
+
+print("Evens doubled, sum = " + total);
+
+// ── 11. Enum ─────────────────────────────────────────────────
+enum Direction { NORTH SOUTH EAST WEST }
+print("Directions: N=" + Direction.NORTH + " S=" + Direction.SOUTH);
+
+// ── 12. Destructuring ────────────────────────────────────────
+let [a, b, c] = [10, 20, 30];
+print("Destructured: a=" + a + " b=" + b + " c=" + c);
+
+// ── 13. Repeat until ─────────────────────────────────────────
+num count = 0;
+repeat { count++; } until count >= 5;
+print("Repeat-until count: " + count);
+
+// ── 14. Bitwise ──────────────────────────────────────────────
+print("5 & 3 = " + (5 & 3));
+print("5 | 3 = " + (5 | 3));
+print("1 << 4 = " + (1 << 4));
+
+print("\nAll features working!");

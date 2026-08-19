@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #1e1e2e;
+      overflow: hidden;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      const path = require('path');
+      const fs   = require('fs');
+
+      // ── Get .zpp file path passed from main.js ──────────────
+      const zppArg = process.argv.find(a => a.startsWith('--zpp='));
+      const zppFile = zppArg ? zppArg.replace('--zpp=', '') : null;
+
+      if (!zppFile || !fs.existsSync(zppFile)) {
+        document.body.innerHTML =
+          '<pre style="color:#ff5555;padding:24px;font-family:monospace">' +
+          'Error: No .zpp file found.\n' +
+          'Usage: zeta run myscript.zpp\n' +
+          (zppFile ? 'Path tried: ' + zppFile : '') +
+          '</pre>';
+        return;
+      }
+
+      // ── Bootstrap ZETA++ (same as bin/zeta.js does) ─────────
+      const PKG_ROOT = path.resolve(__dirname);
+
+      try {
+        require(path.join(PKG_ROOT, 'src', 'load-libs.js'));
+      } catch(e) {
+        document.body.innerHTML =
+          '<pre style="color:#ff5555;padding:24px;font-family:monospace">' +
+          'Failed to load ZETA++ libraries:\n' + e.message + '</pre>';
+        return;
+      }
+
+      const { Interpreter } = require(path.join(PKG_ROOT, 'src', 'interpreter.js'));
+
+      // So that #import resolves paths relative to the .zpp file
+      process.argv[2] = zppFile;
+
+      const code = fs.readFileSync(zppFile, 'utf8');
+      const interp = new Interpreter({ sink: process.stdout });
+
+      try {
+        interp.interpret(code);
+      } catch (e) {
+        // Show runtime errors inside the window so you can read them
+        const pre = document.createElement('pre');
+        pre.style.cssText =
+          'color:#ff5555;background:#1e1e2e;padding:24px;' +
+          'font-family:monospace;font-size:13px;white-space:pre-wrap;';
+        pre.textContent = 'ZETA++ Runtime Error\n\n' + e.message;
+        document.body.appendChild(pre);
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>

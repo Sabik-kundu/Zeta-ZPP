@@ -1,0 +1,224 @@
+============================================================
+ ZETA++ LIBRARY: str.zl
+============================================================
+
+Extended string manipulation and validation tools.
+
+Import: #import["str.zl"];
+
+------------------------------------------------------------
+CASING & FORMATTING
+------------------------------------------------------------
+
+titleCase(s), camelCase(s), snakeCase(s), capitalize(s)
+Description: String case conversion helpers.
+Snippet:
+    str id = snakeCase("User Profile Data"); // "user_profile_data"
+
+truncate(s, maxLen, suffix)
+Description: Truncates string if it exceeds maxLen, adding suffix (default "…").
+Snippet:
+    print(truncate(longText, 50));
+
+wordWrap(s, width)
+Description: Wraps a string into multiple lines at the specified width.
+Snippet:
+    str wrapped = wordWrap(text, 40);
+
+------------------------------------------------------------
+VALIDATION & ANALYSIS
+------------------------------------------------------------
+
+countWords(s), countLines(s)
+Description: Word and line counting.
+Snippet:
+    print("Words: " + countWords(essay));
+
+isPalindrome(s)
+Description: Returns true if the string reads the same backwards.
+Snippet:
+    if isPalindrome("Racecar") { print("Yes"); }
+
+isNumStr(s), isEmailStr(s), isURLStr(s)
+Description: Format validation helpers.
+Snippet:
+    if isEmailStr(userInput) { print("Valid email"); }
+
+countOccurrences(s, sub)
+Description: Counts how many times a substring appears.
+Snippet:
+    num count = countOccurrences("Mississippi", "ss");
+
+------------------------------------------------------------
+PADDING & ALIGNMENT
+------------------------------------------------------------
+
+lpad(s, n, char), rpad(s, n, char), center(s, n, char)
+Description: Pad a string to width n.
+Snippet:
+    str centered = center("MENU", 20, "-");
+
+------------------------------------------------------------
+TRANSFORMATIONS
+------------------------------------------------------------
+
+reverseStr(s), reverseWords(s)
+Description: Reverses characters or words in a string.
+Snippet:
+    print(reverseStr("stressed")); // "desserts"
+
+escapeHtml(s), stripHtml(s)
+Description: HTML sanitation helpers.
+Snippet:
+    str safe = escapeHtml("<b>Hi</b>");
+
+template(s, vars)
+Description: Simple template engine using {key} placeholders and a struct/object.
+Snippet:
+    let data = { name: "Bob", score: 50 };
+    print(template("User {name} has {score} points", data));
+    
+================================================================
+  ZPP LIBRARY: str.zl
+  Extended String Utilities
+================================================================
+
+Import with:
+  #import["str.zl"];
+
+Provides advanced string manipulation, analysis, validation,
+padding, and templating functions beyond the built-in string set.
+
+----------------------------------------------------------------
+  ANALYSIS & COUNTING
+----------------------------------------------------------------
+
+countOccurrences(str, substring)
+  Counts and returns how many times substring appears within
+  str. Overlapping occurrences are not counted.
+
+countWords(str)
+  Returns the number of words in str, where words are separated
+  by whitespace.
+
+countLines(str)
+  Returns the number of lines in str (counts newline characters
+  plus one).
+
+countChar(str, char)
+  Returns how many times the single character char appears in
+  str.
+
+----------------------------------------------------------------
+  INSPECTION & VALIDATION
+----------------------------------------------------------------
+
+isPalindrome(str)
+  Returns true if str reads the same forwards and backwards.
+  Case is ignored and non-alphanumeric characters are stripped
+  before comparison.
+  Example: isPalindrome("A man a plan a canal Panama") → true
+
+isNumStr(str)
+  Returns true if str represents a valid number (after
+  trimming whitespace).
+
+isEmailStr(str)
+  Returns true if str looks like a valid email address in the
+  format local@domain.tld.
+
+isURLStr(str)
+  Returns true if str is a valid URL (must include a scheme
+  such as https://).
+
+----------------------------------------------------------------
+  CASE TRANSFORMATION
+----------------------------------------------------------------
+
+capitalize(str)
+  Returns str with only the first character converted to
+  uppercase and the rest unchanged.
+
+titleCase(str)
+  Returns str with the first letter of every word converted to
+  uppercase and the remaining letters lowercased.
+  Example: titleCase("the quick brown fox") → "The Quick Brown Fox"
+
+camelCase(str)
+  Converts str (which may use spaces, hyphens, or underscores
+  as word separators) to camelCase.
+  Example: camelCase("hello world") → "helloWorld"
+
+snakeCase(str)
+  Converts str to snake_case.
+  Spaces are replaced with underscores and uppercase letters
+  are converted to lowercase with a leading underscore.
+  Example: snakeCase("Hello World") → "hello_world"
+
+----------------------------------------------------------------
+  MODIFICATION
+----------------------------------------------------------------
+
+truncate(str, maxLength, suffix?)
+  If str is longer than maxLength, it is cut and suffix is
+  appended (default suffix is "…"). The total returned length
+  will not exceed maxLength.
+
+reverseStr(str)
+  Returns str with all characters in reverse order.
+
+reverseWords(str)
+  Returns str with the words in reverse order.
+  Example: reverseWords("hello world foo") → "foo world hello"
+
+wordWrap(str, width)
+  Wraps str so that no line exceeds width characters.
+  Words are not split; if a single word is longer than width
+  it forms its own line. Lines are joined with newline characters.
+
+----------------------------------------------------------------
+  PADDING & ALIGNMENT
+----------------------------------------------------------------
+
+lpad(value, length, char?)
+  Pads value on the left with char (default space) until the
+  result is at least length characters long. value is converted
+  to a string first.
+
+rpad(value, length, char?)
+  Pads value on the right with char (default space) until the
+  result is at least length characters long.
+
+center(value, length, char?)
+  Centers value within a field of length characters, padding
+  both sides with char (default space). If the padding cannot
+  be split evenly, the extra character goes on the right.
+
+----------------------------------------------------------------
+  HTML HANDLING
+----------------------------------------------------------------
+
+escapeHtml(str)
+  Replaces the characters &, <, >, and " with their HTML
+  entity equivalents (&amp; &lt; &gt; &quot;).
+  Use before inserting untrusted text into HTML output.
+
+stripHtml(str)
+  Removes all HTML tags from str, returning the plain text
+  content.
+
+----------------------------------------------------------------
+  TEMPLATING
+----------------------------------------------------------------
+
+template(templateStr, variables)
+  Replaces {key} placeholders in templateStr with the
+  corresponding values from the variables object.
+  Placeholders whose key is not found in variables are left
+  unchanged.
+  Example:
+    template("Hello {name}, you have {count} messages.",
+             {name: "Alice", count: 5})
+    → "Hello Alice, you have 5 messages."
+
+================================================================

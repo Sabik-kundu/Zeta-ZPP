@@ -1,0 +1,3 @@
+#import["zeta.zl"];
+
+zeta.io.print("Hello, World!");

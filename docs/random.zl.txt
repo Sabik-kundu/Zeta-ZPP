@@ -1,0 +1,95 @@
+================================================================
+  ZPP LIBRARY: random.zl
+  Randomness & Probability Utilities
+================================================================
+
+Import with:
+  #import["random.zl"];
+
+Provides functions for generating random numbers, making random
+choices, shuffling data, and working with seeded randomness and
+statistical distributions.
+
+----------------------------------------------------------------
+  SEEDED RANDOMNESS
+----------------------------------------------------------------
+
+setSeed(number)
+  Sets the internal seed for the seeded random number generator.
+  Using the same seed produces the same sequence of values from
+  randSeed(). Useful for reproducible results.
+  Note: setSeed does not affect randInt, randFloat, and other
+  functions that use the standard random generator.
+
+randSeed()
+  Returns a pseudo-random floating-point number in the range
+  [0, 1) using the internal seeded generator.
+  The sequence depends on the value set by setSeed().
+
+----------------------------------------------------------------
+  STANDARD RANDOM NUMBERS
+----------------------------------------------------------------
+
+randInt(min, max)
+  Returns a random integer between min and max, inclusive.
+  Example: randInt(1, 6) simulates a 6-sided die roll.
+
+randFloat(min, max)
+  Returns a random floating-point number in the range [min, max).
+
+randBool()
+  Returns either true or false with equal probability.
+
+----------------------------------------------------------------
+  GAMES & CHANCE
+----------------------------------------------------------------
+
+coinFlip()
+  Returns the string "heads" or "tails" with equal probability.
+
+dice(sides?)
+  Simulates rolling a die with the given number of sides.
+  Returns an integer from 1 to sides.
+  Defaults to a standard 6-sided die if no argument is given.
+
+----------------------------------------------------------------
+  RANDOM SELECTION
+----------------------------------------------------------------
+
+pick(array)
+  Returns a single randomly selected element from array.
+  The array is not modified.
+
+shuffle(array)
+  Returns a new array with all elements in a random order.
+  Uses the Fisher-Yates shuffle algorithm.
+  The original array is not modified.
+
+sample(array, k)
+  Returns a new array containing k randomly selected elements
+  from array, in a random order, with no repeats.
+  Equivalent to taking the first k elements of a shuffled copy.
+
+----------------------------------------------------------------
+  STATISTICAL DISTRIBUTION
+----------------------------------------------------------------
+
+gaussianRandom(mean?, stddev?)
+  Returns a random number drawn from a Gaussian (normal)
+  distribution using the Box-Muller transform.
+  mean   — the centre of the distribution (default 0)
+  stddev — the standard deviation, controlling spread (default 1)
+  Most results will fall within a few standard deviations of
+  the mean.
+
+----------------------------------------------------------------
+  UNIQUE IDENTIFIERS
+----------------------------------------------------------------
+
+uuid()
+  Generates and returns a random UUID (Universally Unique
+  Identifier) in version 4 format.
+  Example output: "a3f4c1d2-7e80-4b2a-9c1f-0e3d5a6b7890"
+  Each call produces a different value.
+
+================================================================

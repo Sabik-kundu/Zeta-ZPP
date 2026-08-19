@@ -1,0 +1,585 @@
+================================================================================
+ os_sim.zl — ZPP REFERENCE MANUAL
+ A library for building a simulated operating system, with an optional
+ real, on-screen desktop GUI you can click, drag, and test.
+================================================================================
+
+--------------------------------------------------------------------------------
+ 0. IMPORTING THE LIBRARY
+--------------------------------------------------------------------------------
+
+  #import["os_sim.zl"]
+
+This exposes one global object: os_sim
+
+Every function on it is written os_sim.os_<subsystem>_<action>(...).
+Almost every function's first argument is a vm — the Virtual Machine you
+get back from os_sim.os_vm_create(). The vm is the container for every
+subsystem: CPU, memory, filesystem, disks, users, processes, scheduler,
+network, services, drivers, registry, windows, icons, and shells.
+
+ZPP type conventions used throughout this document and in every example:
+
+  let              mutable, inferred
+  const num        immutable number
+  const str         immutable string
+  const bool        immutable boolean
+  const array        immutable array
+  func name(args) { ... }     function declaration
+  none               the null literal
+
+RULE THAT MATTERS MOST IN THIS LIBRARY:
+  ZPP does not hoist functions the way JS does. Any func you pass as a
+  callback (a boot step, a shell command, an icon's double-click handler,
+  a start-menu entry) MUST be defined ABOVE the line that references it.
+  Every example in this document follows that rule strictly. If you copy
+  code out of order, fix the order before anything else.
+
+--------------------------------------------------------------------------------
+ 1. TWO WAYS TO USE THIS LIBRARY
+--------------------------------------------------------------------------------
+
+MODE A — HEADLESS SIMULATION
+  Call os_sim.os_vm_create() and never call os_screen_create(). Every
+  subsystem (filesystem, processes, scheduler, users, network, etc.)
+  still works fully — you just never get a visible window. Good for
+  writing OS logic tests, or for a pure CLI OS driven through
+  os_shell_execute / os_terminal_input.
+
+MODE B — REAL GUI SCREEN
+  Call os_sim.os_screen_create(vm, options) once. This opens one real,
+  visible window (backed by Electron) that becomes "the screen" of your
+  simulated OS. Every os_window_*, os_icon_*, os_startmenu_*,
+  os_dialog_*, os_desktop_*, os_terminal_*, and os_fileexplorer_* call
+  you make after this will actually appear on screen, live — draggable
+  windows, clickable icons, a working taskbar and Start menu.
+
+  IMPORTANT: os_screen_create only works if the ZPP host process was
+  itself launched through Electron, not a plain interpreter/Node
+  process. If your ZPP runtime's backend is bootstrapped with a
+  main.js that requires('electron'), this works. If it isn't, calling
+  os_screen_create throws immediately with a clear message rather than
+  failing silently.
+
+--------------------------------------------------------------------------------
+ 2. VIRTUAL MACHINE / BOOT
+--------------------------------------------------------------------------------
+
+os_sim.os_vm_create(config)
+  let vm = os_sim.os_vm_create()
+
+  config is optional. Fields you can set: memoryBytes, cores,
+  schedulerAlgorithm, rootPassword, label. A fresh vm already has: a
+  CPU, 64MB of RAM, an empty root filesystem "/", a registry, a
+  permission manager, a network stack (online by default), and one
+  user "root" (password "root" unless you set rootPassword).
+  Returns: vm
+
+os_sim.os_vm_boot(vm)
+  let bootLog = os_sim.os_vm_boot(vm)
+
+  Runs every step you registered with os_boot_addStep, in order,
+  stopping if a step throws. Sets vm.booted = true.
+  Returns: array of {name, ok, error?}
+
+os_sim.os_vm_shutdown(vm)
+  os_sim.os_vm_shutdown(vm)
+
+  Kills every process, stops every service, closes every window.
+  Returns: bool (true)
+
+os_sim.os_vm_reset(vm)
+  os_sim.os_vm_reset(vm)
+
+  Shuts down, clears processes, wipes the filesystem back to empty.
+  Disks, users, and registry are left alone.
+  Returns: bool (true)
+
+os_sim.os_boot_addStep(vm, name, fn)
+  os_sim.os_boot_addStep(vm, "mount-root", os_sim_step_mount_root)
+
+  fn must already be defined above this line. fn's signature is
+  func(vm) { ... }
+  Returns: the boot sequence object (chainable)
+
+os_sim.os_boot_setSequence(vm, steps)
+  Replaces the whole boot sequence with an array of {name, fn}.
+
+os_sim.os_boot_run(vm)
+  Same as os_vm_boot(vm). Returns the boot log.
+
+--------------------------------------------------------------------------------
+ 3. CPU
+--------------------------------------------------------------------------------
+
+os_sim.os_cpu_create(vm, cores)      — replaces the CPU, returns it
+os_sim.os_cpu_tick(vm)               — advances one cycle, returns the
+                                        process that ran (or none)
+os_sim.os_cpu_getUsage(vm)           — returns a num 0.0–1.0
+
+Nothing runs automatically. You must call os_cpu_tick (or
+os_scheduler_tick, identical effect) yourself — once per frame, once
+per shell command, on your own timer, whatever fits your OS design.
+
+  let ran = 0
+  while (ran < 10) {
+      os_sim.os_cpu_tick(vm)
+      ran = ran + 1
+  }
+
+--------------------------------------------------------------------------------
+ 4. MEMORY
+--------------------------------------------------------------------------------
+
+os_sim.os_memory_create(vm, totalBytes)
+os_sim.os_memory_alloc(vm, size, owner)     — returns a str pointer handle
+os_sim.os_memory_free(vm, ptr)              — returns bool
+os_sim.os_memory_read(vm, ptr)
+os_sim.os_memory_write(vm, ptr, data)
+os_sim.os_memory_getUsage(vm)               — {total, used, free, blocks}
+os_sim.os_memory_defragment(vm)
+
+  const num bufferSize = 4096
+  let ptr = os_sim.os_memory_alloc(vm, bufferSize, "renderer")
+  os_sim.os_memory_write(vm, ptr, "frame-data")
+  let contents = os_sim.os_memory_read(vm, ptr)
+  os_sim.os_memory_free(vm, ptr)
+
+--------------------------------------------------------------------------------
+ 5. PROCESSES + SCHEDULER
+--------------------------------------------------------------------------------
+
+os_sim.os_process_create(vm, name, fn, priority)
+  fn signature: func(vm, process) { ... } — runs each time the
+  scheduler picks this process. fn must be defined above the call.
+  Returns: the process object (.pid, .name, .state, .priority)
+
+os_sim.os_process_kill(vm, pid)
+os_sim.os_process_list(vm)
+os_sim.os_process_get(vm, pid)
+os_sim.os_process_setPriority(vm, pid, priority)
+os_sim.os_process_sleep(vm, pid, ms)
+os_sim.os_process_wake(vm, pid)
+
+os_sim.os_scheduler_create(vm, algorithm)
+  algorithm is one of: "round_robin", "priority", "fcfs"
+os_sim.os_scheduler_setAlgorithm(vm, algorithm)
+os_sim.os_scheduler_tick(vm)
+os_sim.os_scheduler_getQueue(vm)   — array of {pid, name, state, priority}
+
+  func os_sim_logger_process(vm, process) {
+      os_sim.os_registry_set(vm, "lastTick", process.pid)
+  }
+
+  os_sim.os_process_create(vm, "logger", os_sim_logger_process, 5)
+
+--------------------------------------------------------------------------------
+ 6. FILESYSTEM
+--------------------------------------------------------------------------------
+
+Paths are POSIX-style strings, e.g. "/etc/config.txt". Root always
+exists on a fresh vm.
+
+os_sim.os_fs_mkdir(vm, path, owner)
+os_sim.os_fs_touch(vm, path, owner)
+os_sim.os_fs_writeFile(vm, path, data, owner)
+os_sim.os_fs_readFile(vm, path)              — returns str
+os_sim.os_fs_deleteFile(vm, path)
+os_sim.os_fs_deleteDir(vm, path)
+os_sim.os_fs_list(vm, path)                  — array of {name,type,size,owner,mode}
+os_sim.os_fs_exists(vm, path)                — returns bool
+os_sim.os_fs_rename(vm, oldPath, newName)
+os_sim.os_fs_move(vm, src, dst)
+os_sim.os_fs_stat(vm, path)
+os_sim.os_fs_chmod(vm, path, mode)
+os_sim.os_fs_chown(vm, path, owner)
+
+  const str notePath = "/home/dddd/note.txt"
+  os_sim.os_fs_mkdir(vm, "/home/dddd")
+  os_sim.os_fs_writeFile(vm, notePath, "hello world")
+  const bool hasNote = os_sim.os_fs_exists(vm, notePath)
+
+--------------------------------------------------------------------------------
+ 7. DISKS
+--------------------------------------------------------------------------------
+
+os_sim.os_disk_create(vm, label, sizeBytes)
+os_sim.os_disk_mount(vm, disk, mountPoint)
+  mounting at "/" replaces the vm's entire root filesystem with the
+  disk's filesystem; mounting elsewhere grafts it onto that path
+os_sim.os_disk_unmount(vm, mountPoint)       — cannot unmount "/"
+os_sim.os_disk_format(vm, disk, fsType)
+os_sim.os_disk_getUsage(vm, disk)            — {total, used, free}
+
+  let disk = os_sim.os_disk_create(vm, "primary", 16777216)
+  os_sim.os_disk_mount(vm, disk, "/")
+
+--------------------------------------------------------------------------------
+ 8. USERS + PERMISSIONS
+--------------------------------------------------------------------------------
+
+os_sim.os_user_create(vm, username, password, role)
+os_sim.os_user_delete(vm, username)
+os_sim.os_user_login(vm, username, password)   — returns bool
+os_sim.os_user_logout(vm)
+os_sim.os_user_getCurrent(vm)                  — returns user or none
+
+os_sim.os_permission_grant(vm, path, user, perm)
+os_sim.os_permission_revoke(vm, path, user, perm)
+os_sim.os_permission_check(vm, path, user, perm)   — returns bool; root
+                                                       always passes
+
+  os_sim.os_user_create(vm, "dddd", "hunter2", "user")
+  const bool loggedIn = os_sim.os_user_login(vm, "dddd", "hunter2")
+
+--------------------------------------------------------------------------------
+ 9. REGISTRY
+--------------------------------------------------------------------------------
+
+os_sim.os_registry_set(vm, key, value)
+os_sim.os_registry_get(vm, key)         — returns value or none
+os_sim.os_registry_delete(vm, key)
+os_sim.os_registry_list(vm, prefix)     — prefix optional
+
+--------------------------------------------------------------------------------
+ 10. SERVICES + DRIVERS
+--------------------------------------------------------------------------------
+
+os_sim.os_service_create(vm, name, fn)
+  fn: func(vm, service) { ... } — runs once on start; if fn returns a
+  func, that func is called automatically on stop (cleanup hook)
+os_sim.os_service_start(vm, name)
+os_sim.os_service_stop(vm, name)
+os_sim.os_service_status(vm, name)     — "running" | "stopped" | "unknown"
+os_sim.os_service_list(vm)
+
+os_sim.os_driver_register(vm, name, handlers)
+  handlers is an object mapping method names to functions
+os_sim.os_driver_unregister(vm, name)
+os_sim.os_driver_call(vm, name, method, ...args)
+os_sim.os_driver_list(vm)
+
+  func os_sim_httpd_stop() {
+      os_sim.os_fs_writeFile(vm, "/var/log/httpd.log", "stopped")
+  }
+
+  func os_sim_httpd_start(vm, service) {
+      return os_sim_httpd_stop
+  }
+
+  os_sim.os_service_create(vm, "httpd", os_sim_httpd_start)
+  os_sim.os_service_start(vm, "httpd")
+
+--------------------------------------------------------------------------------
+ 11. NETWORKING (REAL INTERNET ACCESS)
+--------------------------------------------------------------------------------
+
+os_sim.os_network_connect(vm, hostAddr)     — simulated session, returns connId
+os_sim.os_network_disconnect(vm, connId)
+os_sim.os_network_send(vm, connId, data)
+os_sim.os_network_listen(vm, port, handler)
+os_sim.os_network_setOnline(vm, online)     — toggle real access on/off
+
+os_sim.os_network_request(vm, url, options)
+  Performs a REAL HTTP request (not simulated). Rejects if the network
+  has been set offline. Returns a Promise resolving to:
+    {url, status, ok, headers, body, simulated: false}
+
+os_sim.os_network_ping(vm, addr)
+  Performs a real timed HTTP HEAD request as a latency probe. Returns
+  a Promise resolving to a num (milliseconds), or -1 if offline/failed.
+
+  NOTE: both of these return Promises now — you must handle them with
+  a callback (.then) in your ZPP async/seal pattern, or whatever your
+  ZPP runtime's async construct is; they are not synchronous.
+
+  os_sim.os_network_request(vm, "https://example.com/status", none)
+
+--------------------------------------------------------------------------------
+ 12. IPC (BETWEEN PROCESSES)
+--------------------------------------------------------------------------------
+
+os_sim.os_ipc_createChannel(vm, name)
+os_sim.os_ipc_send(vm, channel, pid, message)
+os_sim.os_ipc_receive(vm, channel, pid)     — returns message or none
+os_sim.os_ipc_broadcast(vm, channel, message)
+os_sim.os_ipc_closeChannel(vm, channel)
+
+--------------------------------------------------------------------------------
+ 13. THE REAL SCREEN
+--------------------------------------------------------------------------------
+
+os_sim.os_screen_create(vm, options)
+  options: { title, width, height, builtinApps }
+  builtinApps defaults to true — set to false if you want a bare
+  desktop with no pre-made icons.
+
+  Opens one real window. From this point on, every window/icon/dialog/
+  taskbar/start-menu/terminal/file-explorer call renders live inside
+  it. If builtinApps is left on, four working demo apps appear as
+  desktop icons immediately: Calculator, Text Editor, Task Manager,
+  and Settings (see section 17).
+
+  Throws if the ZPP host process is not running under Electron.
+
+  os_sim.os_screen_create(vm, { title: "PebbleOS", width: 1100, height: 700 })
+
+os_sim.os_screen_close(vm)      — closes the window, returns bool
+os_sim.os_screen_isOpen(vm)     — returns bool
+
+--------------------------------------------------------------------------------
+ 14. WINDOWS (INSIDE THE SCREEN)
+--------------------------------------------------------------------------------
+
+os_sim.os_window_create(vm, options)
+  options: { title, width, height, x, y, resizable }
+  Once a screen exists, this creates a real, draggable, resizable
+  panel on screen with a title bar (minimize / maximize / close
+  buttons all work) and an automatic taskbar entry. Without a screen,
+  it's just tracked state (headless mode).
+  Returns: window object (.id, .title, .state, .content)
+
+os_sim.os_window_close(vm, windowId)
+os_sim.os_window_move(vm, windowId, x, y)
+os_sim.os_window_resize(vm, windowId, w, h)
+os_sim.os_window_minimize(vm, windowId)
+os_sim.os_window_maximize(vm, windowId)
+os_sim.os_window_focus(vm, windowId)
+os_sim.os_window_setContent(vm, windowId, content)
+  content is a str of raw HTML rendered inside the window body. This
+  is how you build a custom app's interface.
+os_sim.os_window_onEvent(vm, windowId, event, handler)
+  events: "move","resize","minimize","maximize","restore","focus",
+  "close","contentChange". handler must be defined above this call.
+
+  func os_sim_on_window_closed(win) {
+      os_sim.os_registry_set(vm, "lastClosedWindow", win.id)
+  }
+
+  let win = os_sim.os_window_create(vm, { title: "Notes", width: 400, height: 300 })
+  os_sim.os_window_onEvent(vm, win.id, "close", os_sim_on_window_closed)
+  os_sim.os_window_setContent(vm, win.id, "<p>Hello from ZPP.</p>")
+
+--------------------------------------------------------------------------------
+ 15. DESKTOP ICONS + os_app_icon
+--------------------------------------------------------------------------------
+
+os_sim.os_app_icon(appName, imagePath)
+  Also callable as os_sim.os_app_icon(vm, appName, imagePath) to scope
+  the icon to one vm instead of globally.
+  Reads a local image file (png/jpg/jpeg/gif/svg/webp/ico/bmp) or
+  accepts an http(s) URL directly, and registers it under appName so
+  desktop icons can reference it by name instead of a raw path.
+  Returns: the resolved image source (str — a data URI, or the URL
+  you passed in)
+
+  os_sim.os_app_icon("Notepad", "C:\\icons\\notepad.png")
+
+os_sim.os_icon_create(vm, options)
+  options: { label, x, y, onDoubleClick, appName, icon }
+  Use appName to reuse an icon registered via os_app_icon, or icon to
+  point directly at an image path/URL for this one icon. If neither is
+  given, the icon shows a plain letter badge. onDoubleClick must be a
+  func already defined above this call.
+  Returns: icon object
+
+os_sim.os_icon_remove(vm, iconId)
+os_sim.os_icon_move(vm, iconId, x, y)
+
+  func os_sim_launch_notepad(icon) {
+      os_sim.os_app_texteditor_open(vm, "/notes.txt")
+  }
+
+  os_sim.os_app_icon("Notepad", "./assets/notepad.png")
+  os_sim.os_icon_create(vm, {
+      label: "Notepad",
+      x: 20,
+      y: 400,
+      appName: "Notepad",
+      onDoubleClick: os_sim_launch_notepad
+  })
+
+--------------------------------------------------------------------------------
+ 16. TASKBAR, START MENU, DIALOGS, DESKTOP BACKGROUND
+--------------------------------------------------------------------------------
+
+The visible taskbar at the bottom of the screen is automatic — every
+window you create gets a taskbar entry with no extra calls needed.
+os_taskbar_create / os_taskbar_addItem / os_taskbar_removeItem still
+exist for headless bookkeeping, but you don't need them for the
+on-screen taskbar to work.
+
+os_sim.os_startmenu_create(vm, options)      — options: { label }
+os_sim.os_startmenu_addEntry(vm, menuId, label, onClick)
+  onClick must be defined above this call. Clicking the entry in the
+  real Start menu calls it.
+os_sim.os_startmenu_removeEntry(vm, menuId, label)
+
+os_sim.os_dialog_create(vm, options)         — options: { type, message, buttons }
+os_sim.os_dialog_show(vm, dialogId)          — actually pops up on screen
+os_sim.os_dialog_close(vm, dialogId, result)
+
+os_sim.os_desktop_create(vm, options)        — options: { background, theme }
+  background is a CSS color string, applied live to the real desktop.
+os_sim.os_desktop_render(vm, desktopId)      — returns a snapshot summary
+
+  func os_sim_open_notepad() {
+      os_sim.os_app_texteditor_open(vm, "/notes.txt")
+  }
+
+  let startMenu = os_sim.os_startmenu_create(vm, { label: "Start" })
+  os_sim.os_startmenu_addEntry(vm, startMenu.id, "Notepad", os_sim_open_notepad)
+
+--------------------------------------------------------------------------------
+ 17. BUILT-IN APPS
+--------------------------------------------------------------------------------
+
+These four ship with the library and appear automatically as desktop
+icons when os_screen_create is called with builtinApps not set to
+false. You can also open them yourself at any point after a screen
+exists:
+
+os_sim.os_app_calculator_open(vm)
+  A working calculator window — real button presses, real arithmetic.
+
+os_sim.os_app_texteditor_open(vm, filePath)
+  Opens filePath (creating it empty if it doesn't exist yet) in a text
+  area with a Save button that writes back to the vm's real
+  filesystem via os_fs_writeFile.
+
+os_sim.os_app_taskmanager_open(vm)
+  Lists every process from os_scheduler_getQueue with a live Kill
+  button per row, plus a Refresh button.
+
+os_sim.os_app_settings_open(vm)
+  Shows live CPU usage and memory usage, and a button to toggle
+  os_network_setOnline.
+
+Each returns the window object it opened, same as os_window_create.
+
+--------------------------------------------------------------------------------
+ 18. FILE EXPLORER + TERMINAL (AUTO-WINDOWED)
+--------------------------------------------------------------------------------
+
+os_sim.os_fileexplorer_create(vm, options)
+  options: { path, title }
+  If a screen exists and you don't pass options.windowId, a window is
+  created for you automatically and the listing is rendered live —
+  double-clicking a folder navigates in place.
+  Returns: explorer object
+
+os_sim.os_fileexplorer_navigate(vm, explorerId, path)
+os_sim.os_fileexplorer_refresh(vm, explorerId)
+
+os_sim.os_shell_create(vm, options)          — options: { prompt }
+os_sim.os_shell_registerCommand(vm, shellId, name, handler)
+  handler: func(vm, shell, args) { ... }, defined above the call
+os_sim.os_shell_unregisterCommand(vm, shellId, name)
+os_sim.os_shell_execute(vm, shellId, commandLine)
+os_sim.os_shell_pipe(vm, shellId, commandLine1, commandLine2)
+
+os_sim.os_terminal_create(vm, options)
+  options: { shellId, cols, rows, title }
+  If a screen exists and shellId is omitted, both a shell and a
+  window are created for you automatically, with a real input box
+  wired to it.
+  Returns: terminal object
+
+os_sim.os_terminal_write(vm, terminalId, text)
+os_sim.os_terminal_clear(vm, terminalId)
+os_sim.os_terminal_onInput(vm, terminalId, handler)
+os_sim.os_terminal_input(vm, terminalId, line)
+os_sim.os_script_run(vm, shellId, scriptLines)
+
+  func os_sim_cmd_whoami(vm, shell, args) {
+      let current = os_sim.os_user_getCurrent(vm)
+      return current.username
+  }
+
+  let shell = os_sim.os_shell_create(vm, { prompt: "pebble> " })
+  os_sim.os_shell_registerCommand(vm, shell.id, "whoami", os_sim_cmd_whoami)
+  let terminal = os_sim.os_terminal_create(vm, { shellId: shell.id })
+
+--------------------------------------------------------------------------------
+ 19. COMPLETE, CORRECTLY-ORDERED EXAMPLE
+--------------------------------------------------------------------------------
+ Every func is defined before the line that references it — this is
+ the pattern to copy for your own scripts.
+--------------------------------------------------------------------------------
+
+#import["os_sim.zl"]
+
+func os_sim_step_mount_root(vm) {
+    let disk = os_sim.os_disk_create(vm, "primary", 8388608)
+    os_sim.os_disk_mount(vm, disk, "/")
+}
+
+func os_sim_step_seed_fs(vm) {
+    os_sim.os_fs_mkdir(vm, "/home")
+    os_sim.os_fs_writeFile(vm, "/home/readme.txt", "Welcome to PebbleOS.")
+}
+
+func os_sim_launch_notes(icon) {
+    os_sim.os_app_texteditor_open(vm, "/home/readme.txt")
+}
+
+func os_sim_launch_files() {
+    os_sim.os_fileexplorer_create(vm, { path: "/home", title: "Files" })
+}
+
+func os_sim_on_login_dialog_closed(result) {
+    os_sim.os_registry_set(vm, "lastDialogResult", result)
+}
+
+func os_sim_cmd_ls(vm, shell, args) {
+    const str target = args[0] != none ? args[0] : "/"
+    let entries = os_sim.os_fs_list(vm, target)
+    let names = array()
+    for entry in entries {
+        names.push(entry.name)
+    }
+    return names.join(" ")
+}
+
+let vm = os_sim.os_vm_create({ label: "pebble" })
+
+os_sim.os_boot_addStep(vm, "mount-root", os_sim_step_mount_root)
+os_sim.os_boot_addStep(vm, "seed-fs", os_sim_step_seed_fs)
+os_sim.os_vm_boot(vm)
+
+os_sim.os_screen_create(vm, { title: "PebbleOS", width: 1100, height: 720 })
+os_sim.os_desktop_create(vm, { background: "#2b3a42" })
+
+os_sim.os_app_icon("Notes", "./assets/notes.png")
+os_sim.os_icon_create(vm, {
+    label: "Notes",
+    x: 20,
+    y: 400,
+    appName: "Notes",
+    onDoubleClick: os_sim_launch_notes
+})
+
+let startMenu = os_sim.os_startmenu_create(vm, { label: "Start" })
+os_sim.os_startmenu_addEntry(vm, startMenu.id, "File Manager", os_sim_launch_files)
+
+let shell = os_sim.os_shell_create(vm, { prompt: "pebble> " })
+os_sim.os_shell_registerCommand(vm, shell.id, "ls", os_sim_cmd_ls)
+let terminal = os_sim.os_terminal_create(vm, { shellId: shell.id, title: "Terminal" })
+
+let dialog = os_sim.os_dialog_create(vm, {
+    type: "info",
+    message: "PebbleOS booted successfully.",
+    buttons: array("OK")
+})
+os_sim.os_window_onEvent
+os_sim.os_dialog_show(vm, dialog.id)
+
+let ticks = 0
+while (ticks < 5) {
+    os_sim.os_cpu_tick(vm)
+    ticks = ticks + 1
+}
+
+================================================================================
+ END OF DOCUMENT
+================================================================================

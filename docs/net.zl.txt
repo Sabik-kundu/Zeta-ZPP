@@ -1,0 +1,82 @@
+================================================================
+  ZPP LIBRARY: net.zl
+  Network & HTTP Fetch Utilities
+================================================================
+
+Import with:
+  #import["net.zl"];
+
+Provides synchronous functions for fetching remote data over
+HTTP/HTTPS. Works in both terminal (via curl or wget) and
+browser environments.
+
+NOTE: All fetch functions are synchronous — they block execution
+until the data is received or an error is thrown.
+
+----------------------------------------------------------------
+  FETCHING RAW DATA
+----------------------------------------------------------------
+
+fetchText(url)
+  Fetches the content at the given URL and returns it as a
+  plain string.
+  Throws an error if the request fails or returns a non-2xx
+  HTTP status code.
+
+fetchLines(url)
+  Fetches the content at the given URL, splits it into lines,
+  and returns an array of strings — one element per non-empty
+  line. Carriage returns are stripped automatically.
+
+----------------------------------------------------------------
+  FETCHING STRUCTURED DATA
+----------------------------------------------------------------
+
+fetchJSON(url)
+  Fetches the content at the given URL, parses it as JSON,
+  and returns the resulting value (object, array, number,
+  string, etc.).
+  Throws an error if the content is not valid JSON.
+
+fetchCSV(url, hasHeader?)
+  Fetches a CSV file from the given URL and parses it into
+  a structured array.
+
+  hasHeader (default: true)
+    When true, the first row is treated as column headers and
+    the function returns an array of objects where each key
+    is a header name. Numeric values are automatically
+    converted from strings to numbers.
+
+    When false, returns an array of arrays (raw rows), with
+    no header processing.
+
+  Handles quoted fields that contain commas.
+
+fetchTable(url)
+  Fetches a CSV file from the given URL and returns it
+  formatted as a plain-text ASCII table with column headers
+  and borders, ready to be printed. Column widths are
+  adjusted to fit the data.
+
+----------------------------------------------------------------
+  JSON PATH UTILITIES
+  (For use with data returned by fetchJSON)
+----------------------------------------------------------------
+
+jsonGet(object, path)
+  Retrieves a nested value from a parsed JSON object using a
+  dot-separated path string.
+  Example: jsonGet(data, "user.address.city")
+  Returns null if any part of the path does not exist.
+
+jsonKeys(object)
+  Returns an array of the top-level keys of a parsed JSON
+  object.
+
+jsonToArray(object)
+  Converts a parsed JSON value to a ZPP array.
+  If the value is already an array it is returned as-is.
+  If the value is an object its values are returned as an array.
+
+================================================================

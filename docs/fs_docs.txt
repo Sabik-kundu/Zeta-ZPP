@@ -1,0 +1,1539 @@
+
+================================================================================
+  filesystem.zl  —  ZPP Standard Library
+  Official Reference Documentation
+================================================================================
+
+  Version  : 1.0.0
+  File     : filesystem.js  →  imported as  filesystem.zl
+  Access   : fs.<function>(...)
+  Author   : ZPP Standard Library Team
+  Compat   : Node.js / Electron (real disk I/O)  +  Browser (in-memory VFS)
+
+================================================================================
+  TABLE OF CONTENTS
+================================================================================
+
+  1.  Overview & Import
+  2.  Environment Behaviour
+  3.  Section 1  —  Core File I/O
+        fs.read           fs.write          fs.append
+        fs.delete         fs.copy           fs.move
+        fs.rename         fs.exists         fs.touch
+  4.  Section 2  —  Directory Operations
+        fs.mkdir          fs.rmdir          fs.deleteDir
+        fs.list           fs.listFull
+        fs.isDir          fs.isFile         fs.isEmpty
+  5.  Section 3  —  Path Utilities
+        fs.join           fs.basename       fs.dirname
+        fs.ext            fs.stripExt       fs.changeExt
+        fs.normalize      fs.resolve        fs.split
+        fs.isAbsolute
+  6.  Section 4  —  Metadata & Stats
+        fs.stat           fs.size           fs.modifiedAt
+        fs.createdAt
+  7.  Section 5  —  Content Helpers
+        fs.readLines      fs.writeLines     fs.appendLine
+        fs.readJSON       fs.writeJSON      fs.clear
+        fs.lineCount      fs.wordCount
+  8.  Section 6  —  Search
+        fs.find           fs.findByExt      fs.grep
+        fs.countIn
+  9.  Section 7  —  Environment & Runtime
+        fs.cwd            fs.home           fs.temp
+        fs.sep            fs.env
+        fs.vfsSnapshot    fs.vfsClear
+  10. Section 8  —  Tree & Summary
+        fs.tree           fs.summary
+  11. Error Handling & Safe Defaults
+  12. Full Program Examples
+  13. Quick Reference Card
+
+================================================================================
+  1. OVERVIEW & IMPORT
+================================================================================
+
+  filesystem.zl is the official ZPP standard library for all file and directory
+  operations.  Everything is accessed through the  fs  namespace object.
+
+  IMPORT SYNTAX
+  ─────────────
+    import filesystem.zl
+
+  That single line makes the entire  fs  object available in your ZPP program.
+  No other setup is required.
+
+  BASIC USAGE PATTERN
+  ───────────────────
+    import filesystem.zl
+
+    fs.write('/hello.txt', 'Hello, ZPP!')
+    let content = fs.read('/hello.txt')
+    print(content)                         // → Hello, ZPP!
+
+  NAMING CONVENTION
+  ─────────────────
+    All functions live on the  fs  object.
+    You will NEVER call a bare function like  read()  or  write().
+    It is always  fs.read()  and  fs.write().
+
+    BAD  →   write('/file.txt', 'data')
+    GOOD →   fs.write('/file.txt', 'data')
+
+
+================================================================================
+  2. ENVIRONMENT BEHAVIOUR
+================================================================================
+
+  The library detects its runtime automatically at load time.
+
+  ┌─────────────────┬────────────────────────────────────────────────────────┐
+  │ Environment     │ Behaviour                                              │
+  ├─────────────────┼────────────────────────────────────────────────────────┤
+  │ Node.js /       │ All operations use the real OS filesystem via Node's   │
+  │ Electron        │ built-in  fs,  path,  and  os  modules.                │
+  │                 │ Paths refer to actual files on disk.                   │
+  ├─────────────────┼────────────────────────────────────────────────────────┤
+  │ Browser         │ All operations use a fully in-memory Virtual File      │
+  │                 │ System (VFS).  Data lives only in RAM for the current  │
+  │                 │ page session.  No disk access occurs.                  │
+  │                 │ The VFS is pre-seeded with a root  /  directory.       │
+  └─────────────────┴────────────────────────────────────────────────────────┘
+
+  You can check which environment you are in at runtime:
+
+    import filesystem.zl
+    print(fs.env)     // → 'node'  or  'browser'
+
+  The API surface is identical in both environments.  Code written for the
+  browser VFS will work unchanged on Node without any modifications.
+
+
+================================================================================
+  3. SECTION 1 — CORE FILE I/O
+================================================================================
+
+  These are the fundamental building blocks: creating, reading, changing,
+  copying, moving, and deleting files.
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.read(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Reads the full text content of a file and returns it as a string.
+  Returns  null  if the file does not exist or cannot be read.
+
+  PARAMETERS
+    path  (string)  —  Absolute or relative path to the file.
+
+  RETURNS
+    string  on success.
+    null    if the file does not exist or path is not a string.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/notes/memo.txt', 'Buy milk')
+
+    let text = fs.read('/notes/memo.txt')
+    print(text)                              // → Buy milk
+
+    let missing = fs.read('/ghost.txt')
+    print(missing)                           // → null
+
+    // Always guard against null before using the result
+    let data = fs.read('/config.txt')
+    if (data != null) {
+        print('File contents: ' + data)
+    } else {
+        print('File not found.')
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.write(path, content)
+────────────────────────────────────────────────────────────────────────────────
+
+  Creates a new file or completely overwrites an existing one with the
+  given string content.  Parent directories are created automatically
+  if they do not yet exist.
+
+  PARAMETERS
+    path     (string)  —  Path where the file should be written.
+    content  (string)  —  Text content to write.  Must be a string.
+
+  RETURNS
+    true   on success.
+    false  if path or content is not a string, or if a write error occurs.
+
+  EXAMPLES
+    import filesystem.zl
+
+    // Create a new file
+    fs.write('/projects/readme.txt', 'Welcome to my project!')
+    print(fs.read('/projects/readme.txt'))   // → Welcome to my project!
+
+    // Overwrite existing file (old content is gone)
+    fs.write('/projects/readme.txt', 'Updated content.')
+    print(fs.read('/projects/readme.txt'))   // → Updated content.
+
+    // Parent dirs are created automatically — no fs.mkdir needed
+    fs.write('/a/b/c/deep.txt', 'deep file')
+    print(fs.exists('/a/b/c/deep.txt'))      // → true
+
+    // Writing non-string content returns false safely
+    let ok = fs.write('/data.txt', 12345)
+    print(ok)                                // → false
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.append(path, content)
+────────────────────────────────────────────────────────────────────────────────
+
+  Adds text to the END of an existing file without erasing the current
+  content.  If the file does not exist, it is created automatically.
+
+  PARAMETERS
+    path     (string)  —  Path to the target file.
+    content  (string)  —  Text to add at the end.
+
+  RETURNS
+    true   on success.
+    false  on invalid input or write error.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/log.txt', 'Line 1')
+    fs.append('/log.txt', '\nLine 2')
+    fs.append('/log.txt', '\nLine 3')
+    print(fs.read('/log.txt'))
+    // → Line 1
+    //   Line 2
+    //   Line 3
+
+    // Append to a non-existent file creates it
+    fs.append('/new.txt', 'hello')
+    print(fs.read('/new.txt'))               // → hello
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.delete(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Permanently deletes a single file.
+  To delete a whole directory (and its contents), use  fs.deleteDir().
+
+  PARAMETERS
+    path  (string)  —  Path to the file to delete.
+
+  RETURNS
+    true   if the file was found and deleted.
+    false  if the file did not exist or the path is not a string.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/temp/scratch.txt', 'throwaway')
+    print(fs.exists('/temp/scratch.txt'))    // → true
+
+    fs.delete('/temp/scratch.txt')
+    print(fs.exists('/temp/scratch.txt'))    // → false
+
+    // Deleting a non-existent file is safe — returns false, no crash
+    let result = fs.delete('/ghost.txt')
+    print(result)                            // → false
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.copy(src, dest)
+────────────────────────────────────────────────────────────────────────────────
+
+  Copies a file from  src  to  dest.  The original file is not changed.
+  Parent directories of  dest  are created automatically.
+
+  PARAMETERS
+    src   (string)  —  Path to the source file.
+    dest  (string)  —  Path where the copy should be placed.
+
+  RETURNS
+    true   on success.
+    false  if the source does not exist or a write error occurs.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/originals/photo.txt', 'image data')
+    fs.copy('/originals/photo.txt', '/backup/photo.txt')
+
+    print(fs.read('/backup/photo.txt'))      // → image data
+    print(fs.read('/originals/photo.txt'))   // → image data  (original kept)
+
+    // Copy into a new directory structure — dirs auto-created
+    fs.copy('/originals/photo.txt', '/archive/2024/jan/photo.txt')
+    print(fs.exists('/archive/2024/jan/photo.txt'))   // → true
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.move(src, dest)
+────────────────────────────────────────────────────────────────────────────────
+
+  Moves a file from  src  to  dest.  The source file is removed after
+  a successful copy.  Parent directories of  dest  are created automatically.
+
+  PARAMETERS
+    src   (string)  —  Current path of the file.
+    dest  (string)  —  New path for the file.
+
+  RETURNS
+    true   on success.
+    false  if the source does not exist or a write error occurs.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/inbox/task.txt', 'finish report')
+    fs.move('/inbox/task.txt', '/done/task.txt')
+
+    print(fs.exists('/done/task.txt'))       // → true
+    print(fs.exists('/inbox/task.txt'))      // → false  (moved, not copied)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.rename(oldPath, newPath)
+────────────────────────────────────────────────────────────────────────────────
+
+  Renames a file or directory.  This is an alias for  fs.move()
+  and behaves identically.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/drafts/article_v1.txt', 'content')
+    fs.rename('/drafts/article_v1.txt', '/drafts/article_final.txt')
+
+    print(fs.exists('/drafts/article_final.txt'))   // → true
+    print(fs.exists('/drafts/article_v1.txt'))      // → false
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.exists(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Checks whether a file or directory exists at the given path.
+
+  PARAMETERS
+    path  (string)  —  Path to check.
+
+  RETURNS
+    true   if something exists at that path.
+    false  otherwise.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/data/config.txt', 'debug=true')
+
+    print(fs.exists('/data/config.txt'))     // → true
+    print(fs.exists('/data'))                // → true   (directory also works)
+    print(fs.exists('/data/missing.txt'))    // → false
+
+    // Common pattern: check before reading
+    if (fs.exists('/config.txt')) {
+        let cfg = fs.read('/config.txt')
+        print(cfg)
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.touch(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Creates an empty file at  path  if it does not exist.
+  If the file already exists, its modification timestamp is updated
+  but its content is left completely unchanged.
+
+  PARAMETERS
+    path  (string)  —  Path to touch.
+
+  RETURNS
+    true   on success.
+    false  on invalid input.
+
+  EXAMPLES
+    import filesystem.zl
+
+    // Creates an empty file
+    fs.touch('/logs/session.log')
+    print(fs.exists('/logs/session.log'))    // → true
+    print(fs.read('/logs/session.log'))      // → ''
+
+    // Does NOT erase existing content
+    fs.write('/data/keep.txt', 'precious data')
+    fs.touch('/data/keep.txt')
+    print(fs.read('/data/keep.txt'))         // → precious data  (safe)
+
+
+================================================================================
+  4. SECTION 2 — DIRECTORY OPERATIONS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.mkdir(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Creates a directory at  path.  Any missing parent directories are created
+  automatically (equivalent to  mkdir -p  on Linux).
+  Safe to call even if the directory already exists.
+
+  PARAMETERS
+    path  (string)  —  Directory path to create.
+
+  RETURNS
+    true   on success.
+    false  on error.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.mkdir('/projects/zpp/src')
+    print(fs.isDir('/projects/zpp/src'))     // → true
+    print(fs.isDir('/projects/zpp'))         // → true  (parent also created)
+    print(fs.isDir('/projects'))             // → true
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.rmdir(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Removes an EMPTY directory.
+  Fails safely if the directory still contains files or subdirectories.
+  To remove a directory with contents, use  fs.deleteDir().
+
+  PARAMETERS
+    path  (string)  —  Path to the empty directory to remove.
+
+  RETURNS
+    true   if the directory was empty and was successfully removed.
+    false  if the directory has contents, does not exist, or is not a dir.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.mkdir('/tmp/empty')
+    fs.rmdir('/tmp/empty')
+    print(fs.exists('/tmp/empty'))           // → false
+
+    // Fails safely on non-empty directory
+    fs.mkdir('/tmp/full')
+    fs.write('/tmp/full/file.txt', 'data')
+    let ok = fs.rmdir('/tmp/full')
+    print(ok)                                // → false  (still has contents)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.deleteDir(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Recursively deletes a directory and ALL of its contents.
+  This operation is permanent.  Use with care.
+
+  PARAMETERS
+    path  (string)  —  Path to the directory to delete.
+
+  RETURNS
+    true   on success.
+    false  if the directory does not exist or is not a directory.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.mkdir('/build')
+    fs.write('/build/main.o', '...')
+    fs.write('/build/util.o', '...')
+
+    fs.deleteDir('/build')
+    print(fs.exists('/build'))               // → false  (gone entirely)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.list(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns an array of entry names (files and subdirectories) that are
+  direct children of the given directory.  The list is sorted alphabetically.
+  Does NOT recurse into subdirectories.
+
+  PARAMETERS
+    path  (string)  —  Path to the directory to list.
+
+  RETURNS
+    Array of string names (not full paths).
+    Empty array  if the directory is empty or does not exist.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/zoo/lion.txt', '...')
+    fs.write('/zoo/tiger.txt', '...')
+    fs.mkdir('/zoo/birds')
+
+    let entries = fs.list('/zoo')
+    print(entries)        // → ['birds', 'lion.txt', 'tiger.txt']
+
+    // Only direct children — subdirectory contents not included
+    fs.write('/zoo/birds/eagle.txt', '...')
+    print(fs.list('/zoo'))   // → ['birds', 'lion.txt', 'tiger.txt']  (same)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.listFull(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Like  fs.list()  but returns full absolute paths instead of just names.
+  Useful when you need to pass results directly to other  fs  functions.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/zoo/lion.txt', '...')
+    fs.mkdir('/zoo/birds')
+
+    print(fs.listFull('/zoo'))
+    // → ['/zoo/birds', '/zoo/lion.txt']
+
+    // Iterate and check each entry
+    let entries = fs.listFull('/zoo')
+    for (let path in entries) {
+        if (fs.isFile(path)) {
+            print('File: ' + path)
+        } else {
+            print('Dir : ' + path)
+        }
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.isDir(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns  true  if the path exists AND is a directory.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.mkdir('/docs')
+    fs.write('/docs/readme.txt', '...')
+
+    print(fs.isDir('/docs'))               // → true
+    print(fs.isDir('/docs/readme.txt'))    // → false  (it's a file)
+    print(fs.isDir('/nothing'))            // → false  (does not exist)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.isFile(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns  true  if the path exists AND is a regular file.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/docs/readme.txt', '...')
+    fs.mkdir('/docs/src')
+
+    print(fs.isFile('/docs/readme.txt'))   // → true
+    print(fs.isFile('/docs/src'))          // → false  (it's a directory)
+    print(fs.isFile('/docs/nothing.txt'))  // → false  (does not exist)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.isEmpty(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  For a FILE      →  returns  true  if the file has zero characters.
+  For a DIRECTORY →  returns  true  if the directory has no children.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/blank.txt', '')
+    print(fs.isEmpty('/blank.txt'))          // → true
+
+    fs.write('/full.txt', 'data')
+    print(fs.isEmpty('/full.txt'))           // → false
+
+    fs.mkdir('/emptydir')
+    print(fs.isEmpty('/emptydir'))           // → true
+
+    fs.write('/emptydir/file.txt', 'x')
+    print(fs.isEmpty('/emptydir'))           // → false
+
+
+================================================================================
+  5. SECTION 3 — PATH UTILITIES
+================================================================================
+
+  These functions work with path strings only.  They do NOT touch the filesystem.
+  They are pure string operations and always return a result.
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.join(...parts)
+────────────────────────────────────────────────────────────────────────────────
+
+  Joins multiple path segments into one clean path string.
+  Handles extra slashes, empty segments, and cross-platform separators.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.join('/home', 'user', 'notes.txt'))   // → /home/user/notes.txt
+    print(fs.join('src', 'lib', 'util.zpp'))       // → src/lib/util.zpp
+    print(fs.join('/base/', '/sub/', 'file'))       // → /base/sub/file
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.basename(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the last segment of a path (the filename or directory name).
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.basename('/home/user/notes.txt'))  // → notes.txt
+    print(fs.basename('/home/user/'))           // → user
+    print(fs.basename('/'))                     // → /
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.dirname(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns everything before the last path segment (the parent directory).
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.dirname('/home/user/notes.txt'))   // → /home/user
+    print(fs.dirname('/home/user'))             // → /home
+    print(fs.dirname('/home'))                  // → /
+    print(fs.dirname('/'))                      // → /
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.ext(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the file extension including the leading dot.
+  Returns an empty string if there is no extension.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.ext('report.pdf'))                // → .pdf
+    print(fs.ext('/home/user/notes.txt'))      // → .txt
+    print(fs.ext('archive.tar.gz'))            // → .gz
+    print(fs.ext('Makefile'))                  // → ''   (no extension)
+    print(fs.ext('.hidden'))                   // → ''   (dotfiles have no ext)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.stripExt(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the path with the extension removed.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.stripExt('/docs/report.pdf'))     // → /docs/report
+    print(fs.stripExt('main.zpp'))             // → main
+    print(fs.stripExt('Makefile'))             // → Makefile  (no ext to strip)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.changeExt(path, newExt)
+────────────────────────────────────────────────────────────────────────────────
+
+  Replaces the extension of a path with  newExt.
+  newExt  should include the leading dot.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.changeExt('/docs/report.pdf', '.html'))   // → /docs/report.html
+    print(fs.changeExt('main.zpp', '.js'))             // → main.js
+    print(fs.changeExt('Makefile', '.txt'))            // → Makefile.txt
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.normalize(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Cleans up a messy path by resolving  ..  and  .  segments, and collapsing
+  duplicate slashes into single ones.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.normalize('/home//user/../docs/./notes.txt'))
+    // → /home/docs/notes.txt
+
+    print(fs.normalize('src/./lib/../main.zpp'))
+    // → src/main.zpp
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.resolve(...parts)
+────────────────────────────────────────────────────────────────────────────────
+
+  Resolves a sequence of path segments into a single absolute path.
+  In Node, uses  process.cwd()  as the root.
+  In the browser VFS, resolves relative to  /.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.resolve('home', 'user', 'notes.txt'))     // → /home/user/notes.txt
+    print(fs.resolve('/abs/path', '../sibling'))       // → /abs/sibling
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.split(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Splits a path string into an array of its individual segments.
+  Leading and trailing slashes do not produce empty entries.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.split('/home/user/notes.txt'))    // → ['home', 'user', 'notes.txt']
+    print(fs.split('src/lib/util.zpp'))        // → ['src', 'lib', 'util.zpp']
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.isAbsolute(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns  true  if the path is absolute (starts with  /  on POSIX,
+  or with a drive letter like  C:\  on Windows).
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.isAbsolute('/home/user'))          // → true
+    print(fs.isAbsolute('relative/path'))       // → false
+    print(fs.isAbsolute('C:\\Users\\Alice'))    // → true  (Windows, Node only)
+
+
+================================================================================
+  6. SECTION 4 — METADATA & STATS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.stat(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns a metadata object for the file or directory at  path.
+  Returns  null  if nothing exists at that path.
+
+  RETURN OBJECT SHAPE
+    {
+      path       : string   — the normalised path
+      name       : string   — the basename (e.g. 'notes.txt')
+      ext        : string   — extension including dot (e.g. '.txt'), or ''
+      isFile     : boolean  — true if it is a file
+      isDir      : boolean  — true if it is a directory
+      size       : number   — file size in bytes (0 for directories)
+      createdAt  : Date     — creation timestamp
+      modifiedAt : Date     — last modification timestamp
+    }
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/data/notes.txt', 'Hello ZPP!')
+    let info = fs.stat('/data/notes.txt')
+
+    print(info.name)        // → notes.txt
+    print(info.ext)         // → .txt
+    print(info.isFile)      // → true
+    print(info.isDir)       // → false
+    print(info.size)        // → 9
+
+    // Returns null for non-existent path
+    print(fs.stat('/ghost.txt'))    // → null
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.size(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the size of a file in bytes.
+  Returns  -1  if the file does not exist.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/msg.txt', 'Hello')
+    print(fs.size('/msg.txt'))       // → 5
+
+    print(fs.size('/ghost.txt'))     // → -1
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.modifiedAt(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the last-modified  Date  object for a file or directory.
+  Returns  null  if the path does not exist.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/data.txt', 'content')
+    let ts = fs.modifiedAt('/data.txt')
+    print(ts)           // → Date object (e.g. 2024-09-21T10:30:00.000Z)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.createdAt(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the creation  Date  object for a file or directory.
+  Returns  null  if the path does not exist.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/data.txt', 'content')
+    let ts = fs.createdAt('/data.txt')
+    print(ts)           // → Date object
+
+
+================================================================================
+  7. SECTION 5 — CONTENT HELPERS
+================================================================================
+
+  Higher-level helpers for common file content patterns like reading/writing
+  lines, working with JSON, and basic statistics.
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.readLines(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Reads a file and splits it into an array of lines on  \n.
+  A trailing newline at the end of the file does not produce an extra empty
+  entry in the array.
+  Returns an empty array if the file does not exist.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/fruits.txt', 'apple\nbanana\ncherry')
+    let lines = fs.readLines('/fruits.txt')
+
+    print(lines)         // → ['apple', 'banana', 'cherry']
+    print(lines[0])      // → apple
+    print(lines[1])      // → banana
+
+    // Iterate every line
+    let rows = fs.readLines('/data.csv')
+    for (let row in rows) {
+        print(row)
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.writeLines(path, lines)
+────────────────────────────────────────────────────────────────────────────────
+
+  Writes an array of strings to a file, one string per line (joined with \n).
+  Overwrites existing content.
+
+  PARAMETERS
+    path   (string)  —  Path to write to.
+    lines  (Array)   —  Array of strings.
+
+  RETURNS
+    true  on success,  false  on failure.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.writeLines('/shopping.txt', ['milk', 'eggs', 'bread'])
+    print(fs.read('/shopping.txt'))
+    // → milk
+    //   eggs
+    //   bread
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.appendLine(path, line)
+────────────────────────────────────────────────────────────────────────────────
+
+  Appends a single line to the file.  A newline separator is added before
+  the new line only if the file is not empty.  If the file does not exist,
+  it is created and the line is written without a leading newline.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.writeLines('/log.txt', ['start'])
+    fs.appendLine('/log.txt', 'event 1')
+    fs.appendLine('/log.txt', 'event 2')
+    print(fs.readLines('/log.txt'))
+    // → ['start', 'event 1', 'event 2']
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.readJSON(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Reads a file and parses its content as JSON.
+  Returns the parsed JavaScript value on success.
+  Returns  null  if the file does not exist or the JSON is invalid.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.writeJSON('/config.json', { theme: 'dark', lang: 'en' })
+
+    let cfg = fs.readJSON('/config.json')
+    print(cfg.theme)      // → dark
+    print(cfg.lang)       // → en
+
+    // Invalid JSON returns null — no crash
+    fs.write('/bad.json', 'NOT JSON {{{')
+    print(fs.readJSON('/bad.json'))    // → null
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.writeJSON(path, value, indent?)
+────────────────────────────────────────────────────────────────────────────────
+
+  Serialises a JavaScript value to a JSON string and writes it to a file.
+
+  PARAMETERS
+    path    (string)  —  Destination file path.
+    value   (any)     —  Any JSON-serialisable value.
+    indent  (number)  —  Indentation spaces. Default: 2.  Use 0 for minified.
+
+  RETURNS
+    true  on success,  false  on failure.
+
+  EXAMPLES
+    import filesystem.zl
+
+    // Pretty-printed (default 2 spaces)
+    fs.writeJSON('/data.json', { name: 'ZPP', version: 1 })
+    print(fs.read('/data.json'))
+    // → {
+    //     "name": "ZPP",
+    //     "version": 1
+    //   }
+
+    // Minified
+    fs.writeJSON('/data.min.json', { name: 'ZPP' }, 0)
+    print(fs.read('/data.min.json'))   // → {"name":"ZPP"}
+
+    // 4-space indent
+    fs.writeJSON('/data4.json', { a: 1 }, 4)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.clear(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Erases the content of a file (sets it to empty string) without deleting
+  the file itself.  Returns  false  if the file does not exist.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/cache.txt', 'old data')
+    fs.clear('/cache.txt')
+    print(fs.read('/cache.txt'))      // → ''
+    print(fs.exists('/cache.txt'))    // → true   (file still there)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.lineCount(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the number of lines in a file.  Returns  0  for empty or missing files.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.writeLines('/poem.txt', ['Roses are red', 'Violets are blue'])
+    print(fs.lineCount('/poem.txt'))   // → 2
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.wordCount(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the number of whitespace-separated words in a file.
+  Returns  0  for empty or missing files.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/sentence.txt', 'The quick brown fox')
+    print(fs.wordCount('/sentence.txt'))   // → 4
+
+
+================================================================================
+  8. SECTION 6 — SEARCH
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.find(dir, pattern)
+────────────────────────────────────────────────────────────────────────────────
+
+  Recursively searches  dir  and returns full paths of all entries whose
+  name matches  pattern.
+
+  PARAMETERS
+    dir      (string)           —  Root directory to search from.
+    pattern  (string | RegExp)  —  String  →  substring match on the name.
+                                   RegExp  →  pattern tested against the name.
+
+  RETURNS
+    Array of full path strings.  Empty array if nothing matched.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/proj/main.zpp', '...')
+    fs.write('/proj/test_runner.zpp', '...')
+    fs.write('/proj/readme.txt', '...')
+    fs.write('/proj/lib/util.zpp', '...')
+
+    // Substring match
+    print(fs.find('/proj', '.zpp'))
+    // → ['/proj/lib/util.zpp', '/proj/main.zpp', '/proj/test_runner.zpp']
+
+    // RegExp match — files starting with 'test'
+    print(fs.find('/proj', /^test/))
+    // → ['/proj/test_runner.zpp']
+
+    // Find all files (no filter — match everything)
+    print(fs.find('/proj', ''))
+    // → all paths under /proj
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.findByExt(dir, ext)
+────────────────────────────────────────────────────────────────────────────────
+
+  Recursively finds all files with a specific extension under  dir.
+  The leading dot is optional —  '.txt'  and  'txt'  both work.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/docs/readme.txt', '...')
+    fs.write('/docs/notes.txt', '...')
+    fs.write('/docs/image.png', '...')
+
+    print(fs.findByExt('/docs', '.txt'))    // → ['/docs/notes.txt', '/docs/readme.txt']
+    print(fs.findByExt('/docs', 'png'))     // → ['/docs/image.png']
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.grep(path, pattern)
+────────────────────────────────────────────────────────────────────────────────
+
+  Searches a file line by line and returns an array of match objects for
+  every line that contains the pattern.
+
+  PARAMETERS
+    path     (string)           —  File to search in.
+    pattern  (string | RegExp)  —  String  →  substring match.
+                                   RegExp  →  regex match.
+
+  RETURN OBJECT SHAPE
+    [
+      { line: string, number: number, match: string },
+      ...
+    ]
+      line    — the full text of the matching line
+      number  — 1-based line number in the file
+      match   — the part of the line that matched the pattern
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.writeLines('/server.log', [
+        '[INFO]  server started',
+        '[ERROR] disk full',
+        '[INFO]  request received',
+        '[ERROR] out of memory',
+        '[INFO]  shutting down'
+    ])
+
+    // Find all ERROR lines
+    let errors = fs.grep('/server.log', 'ERROR')
+    for (let e in errors) {
+        print('Line ' + e.number + ': ' + e.line)
+    }
+    // → Line 2: [ERROR] disk full
+    // → Line 4: [ERROR] out of memory
+
+    // Use a RegExp to match WARN or ERROR
+    let problems = fs.grep('/server.log', /WARN|ERROR/)
+    print(problems.length)    // → 2
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.countIn(path, pattern)
+────────────────────────────────────────────────────────────────────────────────
+
+  Counts the total number of non-overlapping occurrences of  pattern
+  in the entire file content.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/report.txt', 'The cat sat on the mat near the cat.')
+    print(fs.countIn('/report.txt', 'cat'))    // → 2
+    print(fs.countIn('/report.txt', 'the'))    // → 2
+    print(fs.countIn('/report.txt', /at/g))    // → 4  (cat, sat, mat, cat)
+
+
+================================================================================
+  9. SECTION 7 — ENVIRONMENT & RUNTIME INFO
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.cwd()
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the current working directory.
+  In Node/Electron, this is the real process working directory.
+  In the browser, this always returns  '/'.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.cwd())    // → /home/alice/project   (Node)
+                       // → /                     (browser)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.home()
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the current user's home directory.
+  Returns  '/home'  in the browser VFS.
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.home())   // → /home/alice   (Node)
+                       // → /home         (browser)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.temp()
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns the system temporary directory path.
+  Returns  '/tmp'  in the browser VFS.
+
+  EXAMPLES
+    import filesystem.zl
+
+    let tmpPath = fs.join(fs.temp(), 'session_data.txt')
+    fs.write(tmpPath, 'temporary')
+    print(tmpPath)    // → /tmp/session_data.txt   (browser)
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.sep  (property, not a function)
+────────────────────────────────────────────────────────────────────────────────
+
+  The platform path separator.  Read this instead of hard-coding slashes
+  when building cross-platform paths manually.
+
+    '/'   on Linux, macOS, browser VFS
+    '\\'  on Windows (Node only)
+
+  EXAMPLES
+    import filesystem.zl
+
+    print(fs.sep)                        // → /
+
+    // Build a path manually using the correct separator
+    let path = 'home' + fs.sep + 'user' + fs.sep + 'file.txt'
+    // Better approach: just use fs.join()
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.env  (property, not a function)
+────────────────────────────────────────────────────────────────────────────────
+
+  A string that indicates which runtime environment the library is using.
+
+    'node'     →  Node.js or Electron (real disk I/O)
+    'browser'  →  Web browser (in-memory VFS)
+
+  EXAMPLES
+    import filesystem.zl
+
+    if (fs.env == 'browser') {
+        print('Running in the browser — using virtual filesystem.')
+    } else {
+        print('Running on Node — writing to real disk.')
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.vfsSnapshot()  [browser only]
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns a plain object mapping every VFS path to its content (or '[dir]'
+  for directories).  Useful for debugging the in-memory filesystem state.
+  Returns an empty object in Node environments.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/a.txt', 'hello')
+    fs.write('/b.txt', 'world')
+    fs.mkdir('/folder')
+
+    print(fs.vfsSnapshot())
+    // → { '/': '[dir]', '/a.txt': 'hello', '/b.txt': 'world', '/folder': '[dir]' }
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.vfsClear()  [browser only]
+────────────────────────────────────────────────────────────────────────────────
+
+  Wipes the entire in-memory VFS and re-seeds it with just the root  /
+  directory.  Has no effect in Node environments.  Returns  true.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/test.txt', 'data')
+    fs.vfsClear()
+    print(fs.exists('/test.txt'))    // → false  (wiped)
+    print(fs.exists('/'))            // → true   (root restored)
+
+
+================================================================================
+  10. SECTION 8 — TREE & SUMMARY
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.tree(dir, depth?)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns a formatted ASCII-art directory tree as a single string.
+
+  PARAMETERS
+    dir    (string)  —  Root directory to draw.
+    depth  (number)  —  How many levels deep to recurse.  Default: unlimited.
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/proj/main.zpp', '...')
+    fs.write('/proj/readme.txt', '...')
+    fs.write('/proj/lib/math.zpp', '...')
+    fs.write('/proj/lib/string.zpp', '...')
+
+    print(fs.tree('/proj'))
+    // /proj
+    // ├── lib
+    // │   ├── math.zpp
+    // │   └── string.zpp
+    // ├── main.zpp
+    // └── readme.txt
+
+    // Limit to 1 level deep
+    print(fs.tree('/proj', 1))
+    // /proj
+    // ├── lib
+    // ├── main.zpp
+    // └── readme.txt
+
+────────────────────────────────────────────────────────────────────────────────
+  fs.summary(path)
+────────────────────────────────────────────────────────────────────────────────
+
+  Returns a rich summary object for a file or directory.
+  Returns  null  if nothing exists at  path.
+
+  FILE SUMMARY SHAPE
+    {
+      path       : string   — path to the file
+      type       : 'file'
+      size       : number   — bytes
+      lines      : number   — line count
+      words      : number   — word count
+      ext        : string   — file extension
+      modifiedAt : Date
+    }
+
+  DIRECTORY SUMMARY SHAPE
+    {
+      path       : string   — path to the directory
+      type       : 'dir'
+      children   : number   — direct children count
+      totalFiles : number   — total files recursively
+      totalDirs  : number   — total subdirs recursively
+      totalSize  : number   — sum of all file sizes recursively
+    }
+
+  EXAMPLES
+    import filesystem.zl
+
+    fs.write('/notes/todo.txt', 'Buy milk\nCall doctor\nFix bug')
+    let info = fs.summary('/notes/todo.txt')
+    print(info.type)    // → file
+    print(info.lines)   // → 3
+    print(info.words)   // → 5
+    print(info.size)    // → 30
+
+    let dirInfo = fs.summary('/notes')
+    print(dirInfo.type)        // → dir
+    print(dirInfo.totalFiles)  // → 1
+    print(dirInfo.totalSize)   // → 30
+
+
+================================================================================
+  11. ERROR HANDLING & SAFE DEFAULTS
+================================================================================
+
+  The filesystem library is designed to NEVER throw an exception.
+  Every function returns a safe fallback value on invalid input or error.
+
+  RETURN VALUE CONVENTIONS
+  ─────────────────────────
+
+    Function type         │ Safe fallback on error
+    ──────────────────────┼──────────────────────────────
+    Read content          │ null
+    Write / modify        │ false
+    Check (is*, exists)   │ false
+    List / array results  │ [] (empty array)
+    Stat / metadata       │ null
+    Path string ops       │ '' (empty string)
+    Count / size          │ 0 or -1 (documented per func)
+
+  RECOMMENDED PATTERNS
+  ─────────────────────
+
+    // Pattern 1: Guard reads with a null check
+    let content = fs.read('/config.txt')
+    if (content != null) {
+        // use content safely
+    }
+
+    // Pattern 2: Check exists before operating
+    if (fs.exists('/data/report.json')) {
+        let data = fs.readJSON('/data/report.json')
+        print(data)
+    }
+
+    // Pattern 3: Use return value of write to detect failure
+    let ok = fs.write('/output.txt', result)
+    if (!ok) {
+        print('Write failed!')
+    }
+
+    // Pattern 4: Default fallback with null coalescing
+    let data = fs.readJSON('/settings.json')
+    if (data == null) {
+        data = { theme: 'light' }   // fallback default
+    }
+
+
+================================================================================
+  12. FULL PROGRAM EXAMPLES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  EXAMPLE A — Simple Note-Taking App
+────────────────────────────────────────────────────────────────────────────────
+
+    import filesystem.zl
+
+    // Save a note
+    fs.write('/notes/zpp_tips.txt', 'ZPP is fast and fun!\nUse imports wisely.')
+
+    // Read it back line by line
+    let lines = fs.readLines('/notes/zpp_tips.txt')
+    print('Note has ' + fs.lineCount('/notes/zpp_tips.txt') + ' lines:')
+    for (let line in lines) {
+        print('  - ' + line)
+    }
+
+    // Add a new tip
+    fs.appendLine('/notes/zpp_tips.txt', 'Libraries make life easier.')
+    print('Updated line count: ' + fs.lineCount('/notes/zpp_tips.txt'))
+
+────────────────────────────────────────────────────────────────────────────────
+  EXAMPLE B — JSON Configuration Manager
+────────────────────────────────────────────────────────────────────────────────
+
+    import filesystem.zl
+
+    let CONFIG_PATH = '/app/config.json'
+
+    // Write default config if it doesn't exist
+    if (!fs.exists(CONFIG_PATH)) {
+        fs.writeJSON(CONFIG_PATH, {
+            theme    : 'dark',
+            language : 'en',
+            version  : 1
+        })
+        print('Config created with defaults.')
+    }
+
+    // Load and use config
+    let cfg = fs.readJSON(CONFIG_PATH)
+    print('Theme   : ' + cfg.theme)
+    print('Language: ' + cfg.language)
+
+    // Update a value and save back
+    cfg.theme = 'light'
+    fs.writeJSON(CONFIG_PATH, cfg)
+    print('Theme updated to: ' + fs.readJSON(CONFIG_PATH).theme)
+
+────────────────────────────────────────────────────────────────────────────────
+  EXAMPLE C — Log File Analyser
+────────────────────────────────────────────────────────────────────────────────
+
+    import filesystem.zl
+
+    let LOG = '/var/app.log'
+
+    // Seed a sample log
+    fs.writeLines(LOG, [
+        '[INFO]  2024-01-01 server started',
+        '[INFO]  2024-01-01 connection accepted',
+        '[WARN]  2024-01-01 high memory usage',
+        '[ERROR] 2024-01-01 disk write failed',
+        '[INFO]  2024-01-01 retry succeeded',
+        '[ERROR] 2024-01-01 connection lost',
+    ])
+
+    // Count severity levels
+    print('Errors : ' + fs.countIn(LOG, 'ERROR'))   // → 2
+    print('Warns  : ' + fs.countIn(LOG, 'WARN'))    // → 1
+    print('Infos  : ' + fs.countIn(LOG, 'INFO'))    // → 3
+    print('Lines  : ' + fs.lineCount(LOG))          // → 6
+
+    // Extract only the ERROR lines
+    let errors = fs.grep(LOG, 'ERROR')
+    print('\n— ERROR lines —')
+    for (let e in errors) {
+        print('  [line ' + e.number + '] ' + e.line)
+    }
+
+    // Archive the log and start fresh
+    fs.copy(LOG, '/var/archive/app_2024-01-01.log')
+    fs.clear(LOG)
+    print('\nLog archived.  Active log cleared.')
+
+────────────────────────────────────────────────────────────────────────────────
+  EXAMPLE D — Project Scanner
+────────────────────────────────────────────────────────────────────────────────
+
+    import filesystem.zl
+
+    let ROOT = '/projects/myapp'
+
+    // Build a sample project structure
+    fs.write(ROOT + '/main.zpp', 'import math.zl\nprint(math.add(1,2))')
+    fs.write(ROOT + '/lib/utils.zpp', '// utilities')
+    fs.write(ROOT + '/lib/parser.zpp', '// parser')
+    fs.write(ROOT + '/docs/readme.txt', 'My ZPP App')
+    fs.write(ROOT + '/docs/api.txt', 'API Reference')
+    fs.write(ROOT + '/config.json', '{ "name": "myapp" }')
+
+    // Print the visual tree
+    print(fs.tree(ROOT))
+
+    // Get a summary of the whole project
+    let summary = fs.summary(ROOT)
+    print('\nProject Summary:')
+    print('  Total files : ' + summary.totalFiles)
+    print('  Total dirs  : ' + summary.totalDirs)
+    print('  Total size  : ' + summary.totalSize + ' bytes')
+
+    // Find all .zpp source files
+    let sources = fs.findByExt(ROOT, '.zpp')
+    print('\nSource files:')
+    for (let s in sources) {
+        print('  ' + s + '  (' + fs.size(s) + ' bytes)')
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+  EXAMPLE E — Backup Utility
+────────────────────────────────────────────────────────────────────────────────
+
+    import filesystem.zl
+
+    // Copy every .txt file in /docs to /backup
+    let docs   = fs.findByExt('/docs', '.txt')
+    let copied = 0
+
+    for (let srcPath in docs) {
+        let name    = fs.basename(srcPath)
+        let dest    = fs.join('/backup', name)
+        let success = fs.copy(srcPath, dest)
+        if (success) {
+            copied++
+        } else {
+            print('Failed to back up: ' + srcPath)
+        }
+    }
+
+    print('Backed up ' + copied + ' of ' + docs.length + ' files.')
+
+
+================================================================================
+  13. QUICK REFERENCE CARD
+================================================================================
+
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │  IMPORT    import filesystem.zl                                        │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  CORE FILE I/O                                                         │
+  │  fs.read(path)              → string | null                            │
+  │  fs.write(path, content)    → true | false                             │
+  │  fs.append(path, content)   → true | false                             │
+  │  fs.delete(path)            → true | false                             │
+  │  fs.copy(src, dest)         → true | false                             │
+  │  fs.move(src, dest)         → true | false                             │
+  │  fs.rename(old, new)        → true | false                             │
+  │  fs.exists(path)            → true | false                             │
+  │  fs.touch(path)             → true | false                             │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  DIRECTORIES                                                           │
+  │  fs.mkdir(path)             → true | false                             │
+  │  fs.rmdir(path)             → true | false  (empty dirs only)          │
+  │  fs.deleteDir(path)         → true | false  (recursive)                │
+  │  fs.list(path)              → string[]  (names only)                   │
+  │  fs.listFull(path)          → string[]  (full paths)                   │
+  │  fs.isDir(path)             → true | false                             │
+  │  fs.isFile(path)            → true | false                             │
+  │  fs.isEmpty(path)           → true | false                             │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  PATH UTILITIES  (no filesystem access)                                │
+  │  fs.join(...parts)          → string                                   │
+  │  fs.basename(path)          → string                                   │
+  │  fs.dirname(path)           → string                                   │
+  │  fs.ext(path)               → string  (e.g. '.txt')                    │
+  │  fs.stripExt(path)          → string                                   │
+  │  fs.changeExt(path, ext)    → string                                   │
+  │  fs.normalize(path)         → string                                   │
+  │  fs.resolve(...parts)       → string  (absolute)                       │
+  │  fs.split(path)             → string[]                                 │
+  │  fs.isAbsolute(path)        → true | false                             │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  METADATA                                                              │
+  │  fs.stat(path)              → object | null                            │
+  │  fs.size(path)              → number  (-1 if missing)                  │
+  │  fs.modifiedAt(path)        → Date | null                              │
+  │  fs.createdAt(path)         → Date | null                              │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  CONTENT HELPERS                                                       │
+  │  fs.readLines(path)         → string[]                                 │
+  │  fs.writeLines(path, arr)   → true | false                             │
+  │  fs.appendLine(path, line)  → true | false                             │
+  │  fs.readJSON(path)          → value | null                             │
+  │  fs.writeJSON(path, v, n?)  → true | false                             │
+  │  fs.clear(path)             → true | false                             │
+  │  fs.lineCount(path)         → number                                   │
+  │  fs.wordCount(path)         → number                                   │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  SEARCH                                                                │
+  │  fs.find(dir, pattern)      → string[]  (full paths)                   │
+  │  fs.findByExt(dir, ext)     → string[]  (full paths)                   │
+  │  fs.grep(path, pattern)     → [{line, number, match}]                  │
+  │  fs.countIn(path, pattern)  → number                                   │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  ENVIRONMENT                                                           │
+  │  fs.cwd()                   → string                                   │
+  │  fs.home()                  → string                                   │
+  │  fs.temp()                  → string                                   │
+  │  fs.sep                     → '/' or '\\'                              │
+  │  fs.env                     → 'node' | 'browser'                       │
+  │  fs.vfsSnapshot()           → object  (browser only)                   │
+  │  fs.vfsClear()              → true    (browser only)                   │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  TREE & SUMMARY                                                        │
+  │  fs.tree(dir, depth?)       → string  (ASCII art)                      │
+  │  fs.summary(path)           → object | null                            │
+  └────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+  END OF DOCUMENTATION  —  filesystem.zl  v1.0.0
+================================================================================

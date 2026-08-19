@@ -1,0 +1,117 @@
+================================================================
+  ZPP LIBRARY: convert.zl
+  Unit Conversion Utilities
+================================================================
+
+Import with:
+  #import["convert.zl"];
+
+Provides functions to convert between common units of
+temperature, distance, weight, speed, and digital storage size.
+
+----------------------------------------------------------------
+  TEMPERATURE
+----------------------------------------------------------------
+
+cToF(celsius)
+  Converts Celsius to Fahrenheit.
+
+fToC(fahrenheit)
+  Converts Fahrenheit to Celsius.
+
+cToK(celsius)
+  Converts Celsius to Kelvin.
+
+kToC(kelvin)
+  Converts Kelvin to Celsius.
+
+----------------------------------------------------------------
+  DISTANCE
+----------------------------------------------------------------
+
+kmToMiles(km)
+  Converts kilometres to miles.
+
+milesToKm(miles)
+  Converts miles to kilometres.
+
+mToFt(metres)
+  Converts metres to feet.
+
+ftToM(feet)
+  Converts feet to metres.
+
+mToInches(metres)
+  Converts metres to inches.
+
+cmToInches(centimetres)
+  Converts centimetres to inches.
+
+inchesToCm(inches)
+  Converts inches to centimetres.
+
+----------------------------------------------------------------
+  WEIGHT
+----------------------------------------------------------------
+
+kgToLbs(kg)
+  Converts kilograms to pounds.
+
+lbsToKg(pounds)
+  Converts pounds to kilograms.
+
+gToOz(grams)
+  Converts grams to ounces.
+
+ozToG(ounces)
+  Converts ounces to grams.
+
+----------------------------------------------------------------
+  SPEED
+----------------------------------------------------------------
+
+kmhToMph(kmh)
+  Converts kilometres per hour to miles per hour.
+
+mphToKmh(mph)
+  Converts miles per hour to kilometres per hour.
+
+msToKmh(ms)
+  Converts metres per second to kilometres per hour.
+
+kmhToMs(kmh)
+  Converts kilometres per hour to metres per second.
+
+----------------------------------------------------------------
+  DIGITAL STORAGE SIZE
+  (Uses base-1024: 1 KB = 1024 bytes)
+----------------------------------------------------------------
+
+bytesToKB(bytes)
+  Converts bytes to kilobytes.
+
+bytesToMB(bytes)
+  Converts bytes to megabytes.
+
+bytesToGB(bytes)
+  Converts bytes to gigabytes.
+
+kbToBytes(kilobytes)
+  Converts kilobytes to bytes.
+
+mbToBytes(megabytes)
+  Converts megabytes to bytes.
+
+gbToBytes(gigabytes)
+  Converts gigabytes to bytes.
+
+formatBytes(bytes)
+  Converts a byte count into a human-readable string with an
+  automatically chosen unit suffix.
+  Examples:
+    formatBytes(500)          → "500 B"
+    formatBytes(2048)         → "2.00 KB"
+    formatBytes(1572864)      → "1.50 MB"
+    formatBytes(2147483648)   → "2.00 GB"
+
+================================================================

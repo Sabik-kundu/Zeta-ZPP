@@ -1,0 +1,1251 @@
+============================================================
+  ml.zl  —  Machine Learning Library for ZETA++
+  Full API Reference & Developer Guide
+============================================================
+
+  Import this library with:
+    #import["ml.zl"];
+
+  ml.zl gives you a complete machine learning toolkit built
+  directly into ZETA++ — no external dependencies needed.
+  It covers everything from data preprocessing and classic
+  models all the way to neural networks, ensembles, and
+  model persistence.
+
+============================================================
+  TABLE OF CONTENTS
+============================================================
+
+  1.  Preprocessing
+  2.  Metrics
+  3.  Linear Models
+  4.  K-Nearest Neighbours
+  5.  Naive Bayes
+  6.  Decision Tree
+  7.  Random Forest
+  8.  Support Vector Machine
+  9.  Clustering
+  10. Neural Network (MLP)
+  11. Dimensionality Reduction (PCA)
+  12. Ensemble Methods
+  13. Cross-Validation & Grid Search
+  14. Pre-Trained Models
+  15. Utilities
+  16. Built-In Datasets
+  17. Model Save & Load
+
+------------------------------------------------------------
+  HOW MODELS WORK (QUICK PATTERN)
+------------------------------------------------------------
+
+  Every supervised model follows the same three-step pattern:
+
+    num model = SomeModel();       // 1. create
+    model.fit(X, y);               // 2. train
+    list preds = model.predict(X); // 3. predict
+
+  X is always a list of lists (2D feature matrix).
+  y is always a flat list of labels or values.
+
+  Each model also has a .score(X, y) shorthand that returns
+  accuracy (classifiers) or R² (regressors).
+
+
+============================================================
+  1. PREPROCESSING
+============================================================
+
+  normalize(X)
+  ------------
+  Min-max scales every column of X to the range [0, 1].
+  Returns an object: { X, mins, maxs, transform }
+  Use .transform(row) to scale a new single row the same way.
+
+    list data = [[1,200],[2,400],[3,600]];
+    let result = normalize(data);
+    list scaled = result.X;
+    // Each column now runs from 0.0 to 1.0
+
+    // Scale a new row using the same mins/maxs:
+    list newRow = result.transform([2, 300]);
+
+
+  standardize(X)
+  --------------
+  Z-score normalizes every column to mean=0 and std=1.
+  Returns an object: { X, means, stds, transform }
+  Preferred over normalize when features have outliers.
+
+    let result = standardize(data);
+    list Xs = result.X;
+    list newRow = result.transform([2, 300]);
+
+
+  trainTestSplit(X, y, testSize, seed)
+  -------------------------------------
+  Shuffles and splits your data into training and test sets.
+
+  Arguments:
+    X        — feature matrix
+    y        — labels / targets
+    testSize — fraction for test set, default 0.2 (= 20%)
+    seed     — random seed for reproducibility, default 42
+
+  Returns: { XTrain, yTrain, XTest, yTest }
+
+    let split = trainTestSplit(X, y, 0.2, 42);
+    model.fit(split.XTrain, split.yTrain);
+    model.predict(split.XTest);
+
+
+  oneHotEncode(y)
+  ---------------
+  Converts a list of class labels into binary vectors.
+  Returns: { encoded, classes }
+
+    list y = [0, 1, 2, 1, 0];
+    let result = oneHotEncode(y);
+    // result.encoded[0] => [1, 0, 0]
+    // result.encoded[1] => [0, 1, 0]
+
+
+  labelEncode(arr)
+  ----------------
+  Converts a list of string labels to integers.
+  Returns: { encoded, classes, map }
+
+    list animals = ["cat", "dog", "cat", "bird"];
+    let result = labelEncode(animals);
+    // result.encoded => [1, 2, 1, 0]
+    // result.classes => ["bird", "cat", "dog"]
+
+
+  polyFeatures(X, degree)
+  -----------------------
+  Expands features by adding polynomial and interaction terms
+  up to the given degree. Default degree is 2.
+  Useful for making linear models capture curved patterns.
+
+    list X = [[2, 3], [4, 5]];
+    list Xp = polyFeatures(X, 2);
+    // Original [a, b] becomes [a, b, a*a, a*b, b*b]
+
+
+============================================================
+  2. METRICS
+============================================================
+
+  accuracy(yTrue, yPred)
+  ----------------------
+  Fraction of predictions that exactly match the true labels.
+  Returns a number between 0.0 and 1.0.
+
+    num acc = accuracy([0,1,1,0], [0,1,0,0]);
+    // => 0.75
+
+
+  mse(yTrue, yPred)
+  -----------------
+  Mean Squared Error — average of squared differences.
+  Lower is better. Used for regression tasks.
+
+
+  rmse(yTrue, yPred)
+  ------------------
+  Root Mean Squared Error — same units as the target.
+  Easier to interpret than MSE.
+
+
+  mae(yTrue, yPred)
+  -----------------
+  Mean Absolute Error — average of absolute differences.
+  More robust to outliers than MSE/RMSE.
+
+
+  r2score(yTrue, yPred)
+  ---------------------
+  R² (coefficient of determination). Measures how much of
+  the target variance the model explains.
+  1.0 = perfect, 0.0 = as good as just predicting the mean,
+  negative = worse than the mean.
+
+    num r2 = r2score([3,4,5], [2.9,4.1,5.2]);
+
+
+  confusionMatrix(yTrue, yPred)
+  -----------------------------
+  Returns { matrix, classes }.
+  matrix[i][j] = how many times class i was predicted as j.
+
+    let cm = confusionMatrix(yTrue, yPred);
+    print(cm.matrix);
+
+
+  precision(yTrue, yPred, posClass)
+  ----------------------------------
+  Of all predictions for posClass, how many were correct?
+  Default posClass is 1.
+
+
+  recall(yTrue, yPred, posClass)
+  ------------------------------
+  Of all actual posClass samples, how many did we catch?
+
+
+  f1score(yTrue, yPred, posClass)
+  --------------------------------
+  Harmonic mean of precision and recall. Use this when
+  classes are imbalanced.
+
+
+  classReport(yTrue, yPred)
+  -------------------------
+  Full per-class precision, recall, F1, and support.
+  Returns { rows, accuracy }.
+
+    let report = classReport(yTrue, yPred);
+    for each row in report.rows {
+        print(row.class + ": F1=" + row.f1);
+    }
+
+
+------------------------------------------------------------
+  SNIPPET — Evaluating a classifier
+------------------------------------------------------------
+
+    #import["ml.zl"];
+
+    list yTrue = [0, 1, 1, 0, 1, 0, 1, 1];
+    list yPred = [0, 1, 0, 0, 1, 1, 1, 1];
+
+    print("Accuracy:  " + accuracy(yTrue, yPred));
+    print("Precision: " + precision(yTrue, yPred, 1));
+    print("Recall:    " + recall(yTrue, yPred, 1));
+    print("F1 Score:  " + f1score(yTrue, yPred, 1));
+
+    let cm = confusionMatrix(yTrue, yPred);
+    print(cm.matrix);
+
+------------------------------------------------------------
+
+
+============================================================
+  3. LINEAR MODELS
+============================================================
+
+  LinearRegression()
+  ------------------
+  Fits a line (or hyperplane) to continuous data using
+  gradient descent. Best starting point for any regression
+  problem.
+
+  Methods: .fit(X, y)  .predict(X)  .score(X, y)
+
+    #import["ml.zl"];
+
+    list X = [[1],[2],[3],[4],[5]];
+    list y = [2.1, 3.9, 6.2, 7.8, 10.1];
+
+    num model = LinearRegression();
+    model.fit(X, y);
+
+    list preds = model.predict([[6],[7]]);
+    print(preds);
+    print("R2: " + model.score(X, y));
+
+
+  RidgeRegression(alpha)
+  ----------------------
+  Linear regression with L2 regularization. Penalizes large
+  weights, which prevents overfitting when features are
+  correlated. Default alpha = 1.0. Higher alpha = stronger
+  regularization.
+
+  Methods: .fit(X, y)  .predict(X)
+
+    num model = RidgeRegression(0.5);
+    model.fit(X, y);
+
+
+  LassoRegression(alpha)
+  ----------------------
+  Linear regression with L1 regularization. Unlike Ridge,
+  Lasso can drive weights all the way to zero, effectively
+  selecting features. Default alpha = 0.01.
+
+  Methods: .fit(X, y)  .predict(X)
+
+    num model = LassoRegression(0.01);
+    model.fit(X, y);
+
+
+  LogisticRegression()
+  --------------------
+  Binary classifier using the sigmoid function and gradient
+  descent. Outputs a probability. Use .predictProba to get
+  the raw probability instead of a 0/1 label.
+
+  Methods: .fit(X, y)  .predict(X, threshold)
+           .predictProba(X)  .score(X, y)
+
+  Default threshold is 0.5.
+
+    #import["ml.zl"];
+
+    list X = [[1,2],[2,3],[3,1],[4,5],[5,4]];
+    list y = [0, 0, 0, 1, 1];
+
+    num clf = LogisticRegression();
+    clf.fit(X, y);
+
+    list probs = clf.predictProba([[3,3]]);
+    print("Spam probability: " + probs[0]);
+
+    list labels = clf.predict([[3,3]]);
+    print("Class: " + labels[0]);
+
+
+  SoftmaxRegression()
+  -------------------
+  Multi-class version of logistic regression using softmax
+  output. Handles 3+ classes directly.
+
+  Methods: .fit(X, y)  .predict(X)  .predictProba(X)
+
+    num clf = SoftmaxRegression();
+    clf.fit(X, y);
+    list probs = clf.predictProba(XTest);
+    // probs[i] is a list of probabilities for each class
+
+
+------------------------------------------------------------
+  SNIPPET — House price prediction
+------------------------------------------------------------
+
+    #import["ml.zl"];
+
+    let ds = loadHousePrice();
+    let split = trainTestSplit(ds.X, ds.y, 0.2, 99);
+
+    let result = standardize(split.XTrain);
+    list Xs_train = result.X;
+    list Xs_test  = split.XTest.map(fn(row) =>
+                      result.transform(row));
+
+    num model = LinearRegression();
+    model.fit(Xs_train, split.yTrain);
+
+    print("R2 score: " + r2score(split.yTest,
+                           model.predict(Xs_test)));
+
+------------------------------------------------------------
+
+
+============================================================
+  4. K-NEAREST NEIGHBOURS
+============================================================
+
+  KNNClassifier(k)
+  ----------------
+  Classifies a new point by majority vote from its k
+  nearest training neighbours. Default k = 3.
+  Simple, non-parametric, works well on small datasets.
+
+  Methods: .fit(X, y)  .predict(X)  .score(X, y)
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let sp = trainTestSplit(ds.X, ds.y, 0.3, 0);
+
+    num clf = KNNClassifier(5);
+    clf.fit(sp.XTrain, sp.yTrain);
+
+    list preds = clf.predict(sp.XTest);
+    print("Accuracy: " + accuracy(sp.yTest, preds));
+
+
+  KNNRegressor(k)
+  ---------------
+  Predicts by averaging the target values of the k nearest
+  neighbours. Default k = 3.
+
+  Methods: .fit(X, y)  .predict(X)
+
+    num reg = KNNRegressor(3);
+    reg.fit(XTrain, yTrain);
+    list preds = reg.predict(XTest);
+
+
+  Notes:
+  - Accuracy improves with standardized features.
+    Always run standardize(X) before using KNN.
+  - Higher k = smoother boundaries but more bias.
+  - KNN stores the entire training set — slow on large data.
+
+
+============================================================
+  5. NAIVE BAYES
+============================================================
+
+  GaussianNB()
+  ------------
+  Naive Bayes classifier that assumes each feature follows
+  a Gaussian (normal) distribution per class. Very fast and
+  works surprisingly well on small, clean datasets.
+
+  Methods: .fit(X, y)  .predict(X)  .score(X, y)
+           .predictLogProba(x)  — log probability per class
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 7);
+
+    num clf = GaussianNB();
+    clf.fit(sp.XTrain, sp.yTrain);
+
+    print("Accuracy: " + clf.score(sp.XTest, sp.yTest));
+
+
+  Notes:
+  - "Naive" because it assumes all features are independent.
+  - Works best when that assumption roughly holds.
+  - Fast to train, great baseline classifier.
+
+
+============================================================
+  6. DECISION TREE
+============================================================
+
+  DecisionTree(opts)
+  ------------------
+  CART algorithm. Recursively splits the data on the feature
+  and threshold that reduces impurity (Gini for classification,
+  MSE for regression) the most.
+
+  Options (pass as a map):
+    maxDepth        — how deep the tree can grow, default 10
+    minSamplesSplit — minimum samples to allow a split, default 2
+    regression      — set true for regression tasks, default false
+
+  Methods: .fit(X, y)  .predict(X)  .score(X, y)
+
+  Classification example:
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 0);
+
+    num tree = DecisionTree({ maxDepth: 5 });
+    tree.fit(sp.XTrain, sp.yTrain);
+
+    list preds = tree.predict(sp.XTest);
+    print("Accuracy: " + accuracy(sp.yTest, preds));
+
+  Regression example:
+
+    num tree = DecisionTree({ maxDepth: 4, regression: true });
+    tree.fit(XTrain, yTrain);
+
+    list preds = tree.predict(XTest);
+    print("R2: " + r2score(yTest, preds));
+
+
+  Notes:
+  - Trees overfit easily. Use maxDepth to limit complexity.
+  - No need to scale features for trees.
+  - Use featureImportance(tree, nFeatures) to see which
+    features drove the most splits.
+
+
+============================================================
+  7. RANDOM FOREST
+============================================================
+
+  RandomForest(opts)
+  ------------------
+  An ensemble of decision trees. Each tree is trained on a
+  random bootstrap sample of the data and a random subset
+  of features. Predictions are combined by majority vote
+  (classification) or mean (regression).
+
+  Options:
+    nTrees      — number of trees, default 10
+    maxDepth    — tree depth limit, default 8
+    maxFeatures — features per tree (default = sqrt of total)
+    regression  — set true for regression, default false
+
+  Methods: .fit(X, y)  .predict(X)  .score(X, y)
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 1);
+
+    num forest = RandomForest({ nTrees: 20, maxDepth: 6 });
+    forest.fit(sp.XTrain, sp.yTrain);
+
+    print("Accuracy: " + forest.score(sp.XTest, sp.yTest));
+
+
+  Notes:
+  - More robust and accurate than a single decision tree.
+  - Immune to overfitting thanks to feature randomness.
+  - Slower to train than a single tree.
+
+
+============================================================
+  8. SUPPORT VECTOR MACHINE
+============================================================
+
+  LinearSVM(C)
+  ------------
+  Binary linear SVM trained with stochastic gradient descent
+  using a hinge loss. Finds a maximum-margin hyperplane that
+  separates two classes.
+
+  Arguments:
+    C — regularization strength, default 1.0.
+        Higher C = more complex boundary (less regularized).
+
+  Methods: .fit(X, y, epochs, lr)  .predict(X)
+           .decision(X)  .score(X, y)
+
+  Note: SVM expects binary labels (0/1 or -1/+1).
+  Standardize features before training.
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    // Make it binary: class 0 vs rest
+    list y_bin = [];
+    for each v in ds.y {
+        push(y_bin, when v == 0 then 1 else 0);
+    }
+
+    let result = standardize(ds.X);
+    let sp = trainTestSplit(result.X, y_bin, 0.2, 5);
+
+    num svm = LinearSVM(1.0);
+    svm.fit(sp.XTrain, sp.yTrain);
+
+    print("Accuracy: " + svm.score(sp.XTest, sp.yTest));
+
+
+============================================================
+  9. CLUSTERING
+============================================================
+
+  KMeans(k, maxIter)
+  ------------------
+  Partitions data into k clusters by minimizing within-cluster
+  sum of squared distances. Uses KMeans++ initialization for
+  faster, more stable convergence.
+
+  Arguments:
+    k       — number of clusters, default 3
+    maxIter — iteration limit, default 300
+
+  Methods: .fit(X)  .predict(X)  .inertia(X)
+
+  After .fit, access:
+    model.centroids — list of k centroid coordinates
+    model.labels    — cluster assignment for each training point
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    num km = KMeans(3);
+    km.fit(ds.X);
+
+    list labels = km.predict(ds.X);
+    print("Cluster assignments: " + labels);
+    print("Inertia: " + km.inertia(ds.X));
+
+
+  DBSCAN(eps, minPts)
+  -------------------
+  Density-based clustering. Groups together points that are
+  close to each other, and marks isolated points as noise
+  (label = -1). Does not require specifying k upfront.
+
+  Arguments:
+    eps    — maximum distance between neighbours, default 0.5
+    minPts — minimum neighbours to form a core point, default 5
+
+  Methods: .fit(X)  .nClusters()
+
+  After .fit, access:
+    model.labels — cluster id per point (-1 means noise)
+
+    num db = DBSCAN(0.5, 3);
+    db.fit(X);
+
+    print("Number of clusters: " + db.nClusters());
+    print("Noise points: " + db.labels.filter(
+        fn(l) => l == -1).length);
+
+
+------------------------------------------------------------
+  SNIPPET — Choosing K with silhouette score
+------------------------------------------------------------
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let best_k = 2;
+    num best_score = -1;
+
+    for k = 2 to 8 {
+        num km = KMeans(k);
+        km.fit(ds.X);
+        num score = silhouetteScore(ds.X, km.labels);
+        print("k=" + k + "  silhouette=" + score);
+        if score > best_score {
+            best_score = score;
+            best_k = k;
+        }
+    }
+    print("Best k: " + best_k);
+
+------------------------------------------------------------
+
+
+============================================================
+  10. NEURAL NETWORK (MLP)
+============================================================
+
+  MLP(layerSizes, opts)
+  ---------------------
+  Multi-Layer Perceptron with full backpropagation. Supports
+  binary and multi-class classification and regression.
+  Uses He initialization for stable training.
+
+  layerSizes is a list that defines the network shape:
+    [inputFeatures, hidden1, hidden2, ..., outputNeurons]
+
+  Options:
+    activation — hidden layer activation: "relu" (default),
+                 "sigmoid", "tanh", or "linear"
+    output     — output activation: "sigmoid" (binary),
+                 "softmax" (multi-class), "linear" (regression)
+    initScale  — weight init scale, default 0.1
+
+  Methods:
+    .fit(X, y, lr, epochs, batchSize, verbose)
+    .predict(X)          — class labels or 0/1
+    .predictProba(X)     — raw output activations
+    .predictRaw(X)       — same as predictProba
+    .score(X, y)         — accuracy
+
+  Defaults: lr=0.01, epochs=500, batchSize=32, verbose=false
+
+  Binary classification example:
+
+    #import["ml.zl"];
+
+    let ds = loadXOR();
+    // Network: 2 inputs -> 4 hidden -> 1 output
+    num net = MLP([2, 4, 1], {
+        activation: "relu",
+        output: "sigmoid"
+    });
+    net.fit(ds.X, ds.y, 0.1, 1000);
+
+    list preds = net.predict(ds.X);
+    print(preds);  // Should be [0, 1, 1, 0]
+
+  Multi-class example (3 classes):
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 42);
+
+    let result = standardize(sp.XTrain);
+    list Xs_train = result.X;
+
+    // 4 inputs -> 8 hidden -> 4 hidden -> 3 classes
+    num net = MLP([4, 8, 4, 3], {
+        activation: "relu",
+        output: "softmax"
+    });
+    net.fit(Xs_train, sp.yTrain, 0.01, 300, 16, true);
+
+    list Xs_test = sp.XTest.map(fn(row) =>
+                    result.transform(row));
+    print("Accuracy: " + net.score(Xs_test, sp.yTest));
+
+  Regression example:
+
+    num net = MLP([1, 16, 16, 1], {
+        activation: "relu",
+        output: "linear"
+    });
+    net.fit(XTrain, yTrain, 0.01, 1000);
+
+  Tips:
+  - Always standardize inputs before training an MLP.
+  - Start small: one or two hidden layers is usually enough.
+  - If training is unstable, lower the learning rate.
+  - Set verbose: true to see loss printed every 100 epochs.
+  - Use batchSize=1 for online (stochastic) updates.
+
+
+============================================================
+  11. DIMENSIONALITY REDUCTION (PCA)
+============================================================
+
+  PCA(nComponents)
+  ----------------
+  Principal Component Analysis. Projects high-dimensional
+  data onto its most informative axes (principal components).
+  Useful for visualization, noise reduction, and speeding
+  up downstream models.
+
+  Arguments:
+    nComponents — number of output dimensions, default 2
+
+  Methods:
+    .fit(X)              — learn components from X
+    .transform(X)        — project X using fitted components
+    .fitTransform(X)     — fit and transform in one call
+
+  After .fit, access:
+    model.components         — list of eigenvectors
+    model.explainedVariance   — variance explained by each component
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+
+    num pca = PCA(2);
+    list X2d = pca.fitTransform(ds.X);
+
+    // X2d[i] is now a 2-element list [PC1, PC2]
+    print("First sample projected: " + X2d[0]);
+    print("Variance explained: " + pca.explainedVariance);
+
+    // Use as preprocessing before a model:
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 0);
+    list trainReduced = pca.fitTransform(sp.XTrain);
+    list testReduced  = pca.transform(sp.XTest);
+
+    num clf = KNNClassifier(5);
+    clf.fit(trainReduced, sp.yTrain);
+    print("Accuracy after PCA: " +
+          clf.score(testReduced, sp.yTest));
+
+
+============================================================
+  12. ENSEMBLE METHODS
+============================================================
+
+  AdaBoost(nEstimators)
+  ---------------------
+  Builds an ensemble of shallow decision trees (stumps by
+  default). Each new tree focuses on the samples the previous
+  trees got wrong. Final prediction is a weighted vote.
+
+  Arguments:
+    nEstimators — number of boosting rounds, default 50
+
+  Methods: .fit(X, y, maxDepth)  .predict(X)  .score(X, y)
+  Default maxDepth = 1 (decision stumps).
+  Labels must be binary (0/1).
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    list y_bin = ds.y.map(fn(v) => when v == 0 then 1 else 0);
+    let sp = trainTestSplit(ds.X, y_bin, 0.2, 0);
+
+    num ada = AdaBoost(30);
+    ada.fit(sp.XTrain, sp.yTrain);
+    print("Accuracy: " + ada.score(sp.XTest, sp.yTest));
+
+
+  GradientBoosting(nEstimators, lr, maxDepth)
+  --------------------------------------------
+  Builds regression trees sequentially, each one fitting the
+  residuals of the previous ensemble. Works for regression
+  and can be adapted for classification.
+
+  Arguments:
+    nEstimators — number of trees, default 50
+    lr          — learning rate (shrinkage), default 0.1
+    maxDepth    — individual tree depth, default 3
+
+  Methods: .fit(X, y)  .predict(X)  .score(X, y)
+
+    #import["ml.zl"];
+
+    let ds = loadHousePrice();
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 7);
+
+    num gb = GradientBoosting(50, 0.1, 3);
+    gb.fit(sp.XTrain, sp.yTrain);
+
+    print("R2: " + r2score(sp.yTest, gb.predict(sp.XTest)));
+
+
+============================================================
+  13. CROSS-VALIDATION & GRID SEARCH
+============================================================
+
+  crossValScore(modelFactory, X, y, cv, metric)
+  ----------------------------------------------
+  Evaluates a model using k-fold cross-validation. Splits
+  the data into cv folds and tests on each one in rotation.
+
+  Arguments:
+    modelFactory — a function that returns a fresh model
+    X, y         — your full dataset
+    cv           — number of folds, default 5
+    metric       — "accuracy" (default), "r2", or "rmse"
+
+  Returns: { scores, mean, std }
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+
+    let result = crossValScore(
+        fn() => KNNClassifier(5),
+        ds.X, ds.y,
+        5,
+        "accuracy"
+    );
+
+    print("Mean CV accuracy: " + result.mean);
+    print("Std deviation:    " + result.std);
+    print("Per-fold scores:  " + result.scores);
+
+
+  gridSearch(modelFactory, paramGrid, X, y, cv)
+  ----------------------------------------------
+  Tries every combination of hyperparameters in paramGrid
+  and returns the best-performing set.
+
+  Arguments:
+    modelFactory — function that accepts a params map and
+                   returns a configured model
+    paramGrid    — map of param names to lists of values
+    X, y         — your dataset
+    cv           — cross-validation folds, default 3
+
+  Returns: { best: { score, params }, results }
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+
+    let search = gridSearch(
+        fn(p) => KNNClassifier(p.k),
+        { k: [1, 3, 5, 7, 9] },
+        ds.X, ds.y,
+        5
+    );
+
+    print("Best k:     " + search.best.params.k);
+    print("Best score: " + search.best.score);
+
+
+============================================================
+  14. PRE-TRAINED MODELS
+============================================================
+
+  These are ready-to-use models trained on built-in datasets.
+  No .fit() call needed — just call the factory and predict.
+
+  xorSolver()
+  -----------
+  An MLP already trained to solve the XOR problem.
+
+    num xor = xorSolver();
+    print(xor.predict([[0,0],[0,1],[1,0],[1,1]]));
+    // => [0, 1, 1, 0]
+
+
+  irisClassifier()
+  ----------------
+  KNN classifier trained on the full iris dataset.
+  Extra method: .classifyFlower(sepalLen, sepalWid,
+                                petalLen, petalWid)
+  Returns the species name as a string.
+
+    num clf = irisClassifier();
+    print(clf.classifyFlower(5.1, 3.5, 1.4, 0.2));
+    // => "setosa"
+
+
+  housingPredictor()
+  ------------------
+  Linear regression trained on the housing dataset.
+  Extra method: .predictRaw(X) — handles standardization for
+  you, so you can pass raw unscaled feature rows.
+
+    num model = housingPredictor();
+    list preds = model.predictRaw([[6.575, 65.2, 4.09]]);
+    print("Predicted price: " + preds[0]);
+
+
+  sentimentClassifier()
+  ---------------------
+  Logistic regression trained on text-feature sentiment data.
+  Extra method: .classifyFeatures(features)
+  Returns: { label: "positive"/"negative", confidence }
+
+  Input features:
+    [pos_words, neg_words, exclamations, questions, caps_ratio]
+
+    num clf = sentimentClassifier();
+    let result = clf.classifyFeatures([5, 1, 2, 0, 0.1]);
+    print(result.label);       // "positive"
+    print(result.confidence);  // e.g. 0.87
+
+
+  spamFilter()
+  ------------
+  Logistic regression trained on spam email features.
+  Extra method: .classifyFeatures(features)
+  Returns: { label: "spam"/"ham", confidence }
+
+  Input features (13 values):
+    freq_make, freq_address, freq_all, freq_our, freq_over,
+    freq_remove, freq_internet, freq_order, freq_mail,
+    freq_receive, cap_avg, cap_longest, cap_total
+
+    num filter = spamFilter();
+    let result = filter.classifyFeatures(
+        [0, 0.64, 0.64, 0, 0.32, 0, 0, 0, 0, 0, 3.75, 61, 278]
+    );
+    print(result.label);       // "spam"
+    print(result.confidence);  // e.g. 0.91
+
+
+============================================================
+  15. UTILITIES
+============================================================
+
+  modelSummary(model)
+  -------------------
+  Prints a formatted overview of a trained model: its type,
+  layer sizes (MLP), number of trees (ensembles), weights
+  (linear models), or cluster count (KMeans).
+
+    print(modelSummary(net));
+
+
+  featureImportance(tree, nFeatures)
+  -----------------------------------
+  Computes the normalized importance score for each feature
+  in a trained DecisionTree. Returns a list of scores that
+  sum to 1.0.
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    num tree = DecisionTree({ maxDepth: 5 });
+    tree.fit(ds.X, ds.y);
+
+    list imp = featureImportance(tree, 4);
+    for i = 0 to 3 {
+        print(ds.featureNames[i] + ": " + imp[i]);
+    }
+
+
+  silhouetteScore(X, labels)
+  --------------------------
+  Measures cluster quality. Returns a value between -1 and 1.
+  Closer to 1 = compact, well-separated clusters.
+  Use this to compare different values of k in KMeans.
+
+    num score = silhouetteScore(X, km.labels);
+    print("Silhouette: " + score);
+
+
+  pipeline(steps)
+  ---------------
+  Chains preprocessing and model steps together. Steps are
+  pairs of [name, object]. Objects with .fit and .transform
+  are applied as transformers; the last step is the model.
+
+  Methods: .fit(X, y)  .predict(X)
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+
+    num pipe = pipeline([
+        ["pca", PCA(2)],
+        ["clf", KNNClassifier(5)]
+    ]);
+
+    pipe.fit(ds.X, ds.y);
+    list preds = pipe.predict(ds.X);
+    print("Accuracy: " + accuracy(ds.y, preds));
+
+
+============================================================
+  16. BUILT-IN DATASETS
+============================================================
+
+  All dataset loaders return an object with:
+    X            — feature matrix (list of lists)
+    y            — target labels or values
+    featureNames — list of feature name strings (most sets)
+    targetNames  — list of class name strings (classifiers)
+    description  — one-line description string
+
+  loadIris()
+  ----------
+  150 samples, 4 features, 3 classes.
+  Features: sepal_length, sepal_width, petal_length, petal_width
+  Classes: setosa (0), versicolor (1), virginica (2)
+  Classic multi-class classification benchmark.
+
+    let ds = loadIris();
+    print(ds.X[0]);          // [5.1, 3.5, 1.4, 0.2]
+    print(ds.targetNames);   // ["setosa", "versicolor", "virginica"]
+
+
+  loadHousing()
+  -------------
+  25 samples, 13 features. Regression.
+  Predict Boston-area house prices (in $1000s).
+  Features include crime rate, room count, tax rate, etc.
+
+    let ds = loadHousing();
+    print(ds.featureNames);
+
+
+  loadHousePrice()
+  ----------------
+  15 samples, 1 feature (size in sqft). Simple regression.
+  Great for demonstrating basic LinearRegression.
+
+    let ds = loadHousePrice();
+    // ds.X[i] = [size], ds.y[i] = price in $1000s
+
+
+  loadXOR()
+  ---------
+  4 samples, 2 features. The classic XOR classification
+  problem. Requires a non-linear model (MLP recommended).
+
+    let ds = loadXOR();
+    // ds.X = [[0,0],[0,1],[1,0],[1,1]]
+    // ds.y = [0, 1, 1, 0]
+
+
+  loadMoons(n, noise)
+  -------------------
+  Generates a two-moon shaped binary dataset.
+  Arguments: n = number of samples (default 200),
+             noise = scatter amount (default 0.1).
+
+    let ds = loadMoons(300, 0.15);
+
+
+  loadCircles(n, noise)
+  ---------------------
+  Generates two concentric circle clusters.
+  Arguments: n = number of samples (default 200),
+             noise = scatter amount (default 0.05).
+
+    let ds = loadCircles(200, 0.1);
+
+
+  loadSpam()
+  ----------
+  15 samples, 13 numeric email features. Binary classification.
+  Predicts spam (1) vs ham (0).
+
+
+  loadSentiment()
+  ---------------
+  16 samples, 5 features. Binary classification.
+  Predicts positive (1) vs negative (0) sentiment.
+  Features: pos_words, neg_words, exclamations, questions,
+            caps_ratio.
+
+
+============================================================
+  17. MODEL SAVE & LOAD
+============================================================
+
+  saveModel(model, filename)
+  --------------------------
+  Serializes a trained model to a JSON string and triggers a
+  download in GUI environments. Returns the JSON string so you
+  can also save it yourself with file I/O.
+
+  filename is optional. Default: "model.zml"
+
+  Supported model types: LinearRegression, RidgeRegression,
+  LassoRegression, LogisticRegression, GaussianNB,
+  DecisionTree, RandomForest, LinearSVM, KMeans, DBSCAN,
+  PCA, AdaBoost, GradientBoosting, MLP.
+
+    num model = LinearRegression();
+    model.fit(X, y);
+    str json = saveModel(model, "my_model.zml");
+    print("Saved: " + len(json) + " characters");
+
+
+  loadModel(jsonString)
+  ----------------------
+  Deserializes a model from a previously saved JSON string.
+  Returns a fully restored model object ready to call
+  .predict() on — no re-training required.
+
+    str json = saveModel(model);
+    num restored = loadModel(json);
+
+    list preds = restored.predict(XTest);
+
+
+------------------------------------------------------------
+  SNIPPET — Save and reload a trained model
+------------------------------------------------------------
+
+    #import["ml.zl"];
+
+    let ds = loadIris();
+    let sp = trainTestSplit(ds.X, ds.y, 0.2, 0);
+
+    num tree = DecisionTree({ maxDepth: 5 });
+    tree.fit(sp.XTrain, sp.yTrain);
+    print("Trained accuracy: " + tree.score(sp.XTest, sp.yTest));
+
+    // Save
+    str json = saveModel(tree);
+
+    // Restore
+    num loaded = loadModel(json);
+    print("Loaded accuracy:  " + loaded.score(sp.XTest, sp.yTest));
+
+------------------------------------------------------------
+
+
+============================================================
+  FULL WORKFLOW EXAMPLE
+============================================================
+
+  A complete end-to-end classification pipeline using iris:
+
+    #import["ml.zl"];
+
+    // 1. Load data
+    let ds = loadIris();
+
+    // 2. Preprocess
+    let norm = standardize(ds.X);
+    let sp   = trainTestSplit(norm.X, ds.y, 0.2, 42);
+
+    // 3. Train
+    num clf = RandomForest({ nTrees: 20, maxDepth: 6 });
+    clf.fit(sp.XTrain, sp.yTrain);
+
+    // 4. Evaluate
+    list preds = clf.predict(sp.XTest);
+    print("Accuracy:  " + accuracy(sp.yTest, preds));
+
+    let report = classReport(sp.yTest, preds);
+    for each row in report.rows {
+        print(row.class + "  precision=" + row.precision
+              + "  recall=" + row.recall
+              + "  f1=" + row.f1);
+    }
+
+    let cm = confusionMatrix(sp.yTest, preds);
+    print(cm.matrix);
+
+    // 5. Cross-validate
+    let cv = crossValScore(
+        fn() => RandomForest({ nTrees: 20, maxDepth: 6 }),
+        norm.X, ds.y, 5, "accuracy"
+    );
+    print("CV mean: " + cv.mean + "  std: " + cv.std);
+
+    // 6. Save
+    str json = saveModel(clf);
+    print("Model saved (" + len(json) + " bytes)");
+
+
+============================================================
+  QUICK REFERENCE CARD
+============================================================
+
+  PREPROCESSING
+  normalize(X)                    Min-max scale to [0,1]
+  standardize(X)                  Z-score (mean=0, std=1)
+  trainTestSplit(X, y, r, seed)   Split into train/test
+  oneHotEncode(y)                 Labels -> binary vectors
+  labelEncode(arr)                Strings -> integers
+  polyFeatures(X, degree)         Add polynomial terms
+
+  METRICS
+  accuracy(yt, yp)                Classification accuracy
+  mse(yt, yp)                     Mean squared error
+  rmse(yt, yp)                    Root mean squared error
+  mae(yt, yp)                     Mean absolute error
+  r2score(yt, yp)                 R² score
+  confusionMatrix(yt, yp)         Confusion matrix
+  precision(yt, yp, c)            Precision for class c
+  recall(yt, yp, c)               Recall for class c
+  f1score(yt, yp, c)              F1 for class c
+  classReport(yt, yp)             Full classification report
+
+  MODELS (all have .fit .predict .score unless noted)
+  LinearRegression()              Regression
+  RidgeRegression(alpha)          Regression + L2
+  LassoRegression(alpha)          Regression + L1
+  LogisticRegression()            Binary classification
+  SoftmaxRegression()             Multi-class
+  KNNClassifier(k)                Classification
+  KNNRegressor(k)                 Regression
+  GaussianNB()                    Naive Bayes classifier
+  DecisionTree(opts)              Classification/regression
+  RandomForest(opts)              Ensemble trees
+  LinearSVM(C)                    Binary SVM
+  KMeans(k)                       Clustering (.fit .predict)
+  DBSCAN(eps, minPts)             Density clustering (.fit)
+  MLP(sizes, opts)                Neural network
+  PCA(n)                          Dimensionality reduction
+  AdaBoost(n)                     Boosting classifier
+  GradientBoosting(n, lr, d)      Boosting regressor
+
+  PRE-TRAINED
+  xorSolver()                     XOR MLP
+  irisClassifier()                KNN on iris
+  housingPredictor()              Linear reg on housing
+  sentimentClassifier()           Logistic on sentiment
+  spamFilter()                    Logistic on spam
+
+  UTILITIES
+  crossValScore(fn, X, y, cv, m)  K-fold cross-validation
+  gridSearch(fn, grid, X, y, cv)  Hyperparameter search
+  featureImportance(tree, n)      Feature scores from tree
+  silhouetteScore(X, labels)      Cluster quality score
+  modelSummary(model)             Print model info
+  pipeline(steps)                 Chain steps together
+  saveModel(model, filename)      Serialize model to JSON
+  loadModel(json)                 Restore model from JSON
+
+  DATASETS
+  loadIris()                      150 samples, 4 feat, 3 class
+  loadHousing()                   25 samples, 13 feat, regression
+  loadHousePrice()                15 samples, 1 feat, regression
+  loadXOR()                       4 samples, XOR problem
+  loadMoons(n, noise)             Two-moon synthetic data
+  loadCircles(n, noise)           Circle synthetic data
+  loadSpam()                      Spam/ham email features
+  loadSentiment()                 Sentiment feature dataset
+
+============================================================
+  ml.zl  |  ZETA++ Machine Learning Library
+============================================================

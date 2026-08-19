@@ -1,0 +1,1094 @@
+================================================================================
+  gui.zl — ZETA++ (ZPP) GUI LIBRARY REFERENCE  v2.0
+  "Windows, widgets, dialogs, canvas drawing, and file I/O for ZPP apps"
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+  1.  Introduction
+  2.  Loading the Library
+  3.  How This Library Works (Views, Modes, Registration)
+  4.  Colors & Layout Conventions
+  5.  Window
+  6.  Scene
+  7.  Button
+  8.  Label
+  9.  TextField (single-line input)
+  10. TextArea (multi-line editor)          *** NEW ***
+  11. Canvas
+  12. Screen
+  13. Camera
+  14. Panel
+  15. MenuBar / Menu / MenuItem              *** NEW ***
+  16. StatusBar                              *** NEW ***
+  17. Dialog / AskBox / ConfirmBox
+  18. Images — loadImage / pickImage
+  19. File I/O — saveTextFile / openTextFile *** NEW ***
+  20. Keyboard Shortcuts — onGlobalKey       *** NEW ***
+  21. Utility Functions (make, rgb, rgba, hex, isWidget, closeAll,
+      allWindows, viewPrint)
+  22. Full Example — Building a Notepad
+  23. Running Modes & Fallback Behavior
+  24. Quick Reference Card
+
+
+================================================================================
+  1. INTRODUCTION
+================================================================================
+
+gui.zl is a ZETA++ standard library that gives your .zpp programs a real,
+on-screen GUI: draggable windows with title bars, buttons, labels, text
+inputs, a multi-line text editor, dropdown menus, a status bar, a drawing
+canvas, dialogs, and simple file open/save.
+
+Every widget gui.zl creates is called a "view". Views are plain ZPP objects
+with chainable methods (most setters return the view itself, so calls can be
+strung together). You never touch the DOM directly — gui.zl does that for
+you underneath.
+
+Everything in this document is available the moment you import the library:
+
+    #import["gui.zl"];
+
+
+================================================================================
+  2. LOADING THE LIBRARY
+================================================================================
+
+    #import["gui.zl"];
+
+This registers a set of global functions (Window, Scene, Button, Label,
+TextField, TextArea, Canvas, Screen, Camera, Panel, MenuBar, StatusBar,
+Dialog, AskBox, ConfirmBox, make, loadImage, pickImage, saveTextFile,
+openTextFile, onGlobalKey, rgb, rgba, hex, isWidget, closeAll, allWindows,
+viewPrint) directly into your ZPP program's scope. You call them exactly
+like any built-in function — there is no namespace prefix unless you import
+gui.zl with an explicit namespace:
+
+    #import["gui.zl": gui];
+    let win = gui.Window(600, 400);   // namespaced form
+
+
+================================================================================
+  3. HOW THIS LIBRARY WORKS (Views, Modes, Registration)
+================================================================================
+
+3.1  VIEWS
+-----------
+Every widget-creating function (Window(), Button(), Label(), ...) returns a
+"view" object. Internally every view carries these hidden fields, which you
+generally won't touch directly but are useful to know about:
+
+    __type__       always the string "view"
+    __viewKind__   "window" | "scene" | "button" | "label" | "input" |
+                   "textarea" | "canvas" | "screen" | "camera" | "panel" |
+                   "menubar" | "statusbar" | "image"
+    __children__   array of child views (for containers like Scene/Panel)
+    __el__         the underlying DOM element (browser mode only)
+    x, y           position, in pixels, relative to its parent
+    width, height  size, in pixels
+
+You can check whether a value is a gui.zl view with isWidget(v) (see
+section 21).
+
+3.2  METHOD CHAINING
+----------------------
+Almost every setter-style method (setTitle, setColor, setPosition, add,
+...) returns the view itself, so you can chain calls:
+
+    Button("Save", 20, 20, 90, 34)
+        .setColor("#1e1e2e", "#50fa7b")
+        .setRadius(8)
+        .work(fn() => print("saved"));
+
+Getter-style methods (getValue, getLineCount, getCursorLine, ...) return
+the requested value instead, ending the chain.
+
+3.3  THREE RUNNING MODES
+--------------------------
+gui.zl detects its environment automatically and behaves differently in
+each:
+
+  BROWSER / ELECTRON RENDERER  — the real implementation. Widgets render as
+    actual DOM elements, drawing happens on a real <canvas>, dialogs are
+    real draggable windows, file I/O uses the browser's download and file-
+    picker APIs. This is the mode your ZPP program almost always runs in
+    (including inside ZETAIDE / Electron apps, since gui.js is loaded by
+    the renderer process, i.e. index.html).
+
+  ELECTRON MAIN PROCESS — if gui.js is accidentally require()'d from the
+    Electron *main* process (not the renderer), every function still
+    exists and returns a valid-shaped view object so your program won't
+    crash, but nothing actually appears on screen. Each call prints a
+    one-time warning telling you to load gui.js from index.html instead.
+
+  PLAIN NODE.JS (no Electron, no browser) — same safe no-op behavior as
+    the Electron-main-process case.
+
+Because of this, you can safely call any gui.zl function without checking
+what environment you're in — worst case you get a warning in the console
+instead of a crash.
+
+3.4  THE make() ESCAPE HATCH
+-------------------------------
+Every widget can also be created through a single generic function, useful
+for metaprogramming (e.g. constructing a UI from data):
+
+    let w = make("window", 600, 400);
+    let b = make("button", "OK", 10, 10, 80, 30);
+
+    // valid type strings:
+    //   "window" "scene" "button" "label" "textfield" "textarea"
+    //   "canvas" "screen" "camera" "panel" "menubar" "statusbar"
+
+
+================================================================================
+  4. COLORS & LAYOUT CONVENTIONS
+================================================================================
+
+- Colors are plain CSS color strings: "#50fa7b", "rgb(80,250,123)",
+  "rgba(80,250,123,0.5)", "red", etc. Use rgb()/rgba()/hex() (section 21)
+  to build them from numbers if you prefer.
+- All positions (x, y) and sizes (w, h) are in pixels, measured from the
+  top-left corner of the parent view.
+- The default theme is a dark "Dracula-like" palette:
+    background   #1e1e2e
+    panel/bar    #282a36
+    border       #44475a
+    accent       #6272a4 / #bd93f9
+    text         #f8f8f2 / #cdd6f4
+    success      #50fa7b
+    danger       #ff5555
+  You are free to override any of these per-widget with setColor /
+  setBackground / setBorder.
+
+
+================================================================================
+  5. WINDOW
+================================================================================
+
+    let win = Window(width, height);
+
+Creates a draggable, closable application window. In an Electron renderer
+the window fills the entire native frame instead of floating.
+
+CREATION
+    Window(w, h)                 w/h default to 400×300
+
+METHODS
+    win.setTitle(text)           Sets the title-bar text. Chainable.
+    win.setBackground(color)     Sets the window body's background color.
+    win.show()                   Makes the window visible (display:flex).
+    win.hide()                   Hides the window without closing it.
+    win.close()                  Closes and removes the window.
+    win.move(x, y)                Repositions the window (browser mode) or
+                                  asks Electron's main process to move the
+                                  native window.
+    win.resize(w, h)              Resizes the window.
+    win.onClose(fn)               Registers a callback fired when the user
+                                  clicks the close button or the red dot.
+    win.loadImage(src)            Sets the window body's background-image
+                                  to the given image URL/path.
+    win.setScene(scene)           Replaces the window's entire contents
+                                  with the given Scene view (see section 6).
+    win.add(child)                Adds a widget directly to the window. If
+                                  no scene exists yet, an 'open'-layout
+                                  scene is created automatically first.
+
+ATTRIBUTES
+    win.width, win.height         Current size in pixels.
+    win.currentScene              The Scene currently attached (or null).
+
+EXAMPLE
+    let win = Window(700, 500);
+    win.setTitle("My App").setBackground("#1e1e2e");
+    win.onClose(fn() => print("window closed"));
+    win.show();
+
+
+================================================================================
+  6. SCENE
+================================================================================
+
+A Scene is a layout container that holds and positions other widgets
+inside a Window. You usually don't need to create one explicitly —
+win.add(child) creates a default 'open' scene for you the first time it's
+called — but you can create one directly for more control.
+
+CREATION
+    Scene(layout)                 layout is "open" (default) or "grid"
+
+METHODS
+    scene.add(child)              Adds a widget to the scene. In 'open'
+                                  layout, the child keeps the x/y it was
+                                  created with (absolute positioning). In
+                                  'grid' layout, children flow into a CSS
+                                  grid instead.
+    scene.remove(child)           Removes a previously-added widget.
+    scene.clear()                 Removes all children from the scene.
+    scene.setLayout(type, cols, rows)
+                                  Switches layout mode. For "grid", cols
+                                  (default 2) and optionally rows control
+                                  the CSS grid-template.
+
+EXAMPLE
+    let sc = Scene("grid");
+    sc.setLayout("grid", 3);        // 3-column grid
+    sc.add(Button("A",0,0));
+    sc.add(Button("B",0,0));
+    sc.add(Button("C",0,0));
+    win.setScene(sc);
+
+
+================================================================================
+  7. BUTTON
+================================================================================
+
+    let btn = Button(label, x, y, w, h);
+
+CREATION
+    Button(label, x, y, w, h)     label defaults to "Button";
+                                  w/h default to 90×36
+
+METHODS
+    btn.listen(event, fn)         event is one of:
+                                    "click"    fires on click
+                                    "pressed"  alias for "click"
+                                    "hover"    fires on mouse-enter
+                                    "release"  fires on mouse-up
+                                  Any other string is passed straight
+                                  through as a raw DOM event name.
+    btn.work(handler)             Shorthand for listen("click", handler).
+                                  This is the method you'll use 99% of
+                                  the time.
+    btn.pressed()                 Returns a small chain-helper object with
+                                  its own .do(fn) method that also wires up
+                                  a click handler:
+                                      btn.pressed().do(fn() => ...);
+    btn.setLabel(text)             Changes the button's text.
+    btn.setText(text)              Alias for setLabel.
+    btn.setColor(fg, bg)            Sets text color and background color.
+    btn.setBackground(bg)           Sets only the background color.
+    btn.setFontSize(px)              Sets font size in pixels.
+    btn.setRadius(px)                Sets the corner radius in pixels.
+    btn.setBorder(color, width)      Adds/changes a border.
+    btn.setPosition(x, y)            Moves the button.
+    btn.setSize(w, h)                 Resizes the button.
+    btn.enable()                      Re-enables a disabled button.
+    btn.disable()                     Disables the button (dimmed, un-
+                                      clickable).
+
+ATTRIBUTES
+    btn.x, btn.y, btn.width, btn.height
+
+EXAMPLE
+    let save = Button("Save", 20, 20, 100, 36);
+    save.setColor("#1e1e2e", "#50fa7b").setRadius(8);
+    save.work(fn() => print("Saved!"));
+
+
+================================================================================
+  8. LABEL
+================================================================================
+
+    let lbl = Label(text, x, y);
+
+Plain, non-interactive text (pointer-events are disabled so it never
+blocks clicks to things behind it).
+
+CREATION
+    Label(text, x, y)
+
+METHODS
+    lbl.setText(text)               Changes the displayed text.
+    lbl.setColor(color)              Sets the text color.
+    lbl.setFontSize(px)               Sets font size in pixels.
+    lbl.setFont(family, size, weight) Sets font-family / size / weight in
+                                      one call. Any argument can be null
+                                      to leave that property unchanged.
+    lbl.setAlign(align)                "left" | "center" | "right".
+    lbl.setPosition(x, y)               Moves the label.
+    lbl.setSize(w, h)                    Constrains the label's box and
+                                         clips overflow.
+    lbl.setBackground(color)             Gives the label a background
+                                         "chip" with small padding.
+
+EXAMPLE
+    let title = Label("Word Count: 0", 20, 500);
+    title.setColor("#cdd6f4").setFontSize(13);
+
+
+================================================================================
+  9. TEXTFIELD (single-line input)
+================================================================================
+
+    let field = TextField(hint, x, y, w, h);
+
+Wraps a single-line text <input>. For multi-line editing (documents, code,
+notes) use TextArea instead — see section 10.
+
+CREATION
+    TextField(hint, x, y, w, h)     hint is placeholder text;
+                                    w/h default to 160×34
+
+METHODS
+    field.getValue()                 Returns the current text (string).
+    field.setValue(text)              Sets the text.
+    field.clear()                     Empties the field.
+    field.focus()                     Gives the field keyboard focus.
+    field.setPosition(x, y)            Moves the field.
+    field.setSize(w, h)                 Resizes the field.
+    field.setColor(fg, bg)              Sets text color and background
+                                        color.
+    field.setFontSize(px)                Sets font size.
+    field.setReadOnly(bool)               Makes the field read-only when
+                                          true.
+    field.enable()                        Re-enables the field.
+    field.disable()                       Disables the field (dimmed,
+                                          un-editable).
+    field.listen(event, fn)                event is one of:
+                                             "change"  fires on every
+                                                       keystroke; fn(text)
+                                             "enter"   fires when Enter is
+                                                       pressed; fn(text)
+                                             "focus"   fires on focus
+                                             "blur"    fires on blur
+
+BUGFIX NOTE: in earlier versions of this library, setPosition() moved the
+on-screen element but never updated the field's own x/y bookkeeping, so
+re-adding the field to a new 'open' scene later would snap it back to its
+original spot. This is fixed — setPosition now keeps both in sync.
+
+EXAMPLE
+    let name = TextField("Enter your name", 20, 60, 240, 34);
+    name.listen("enter", fn(val) => print("Hello, #val!"));
+
+
+================================================================================
+  10. TEXTAREA (multi-line editor)                          *** NEW ***
+================================================================================
+
+    let editor = TextArea(text, x, y, w, h);
+
+A full multi-line text-editing widget — the piece needed for any
+Notepad-, code-editor-, or notes-style app. Renders as a monospaced
+<textarea> with a Dracula-style dark theme by default.
+
+CREATION
+    TextArea(text, x, y, w, h)      text is the initial contents (may be
+                                    "" or omitted); w/h default to 400×250
+
+CONTENT METHODS
+    editor.getValue()                Returns the entire contents (string).
+    editor.setValue(text)             Replaces the entire contents.
+    editor.clear()                    Empties the editor.
+    editor.insertAtCursor(text)         Inserts text at the current cursor
+                                        position (replacing any selection),
+                                        and moves the cursor to just after
+                                        the inserted text.
+    editor.getSelection()               Returns the currently selected
+                                        text (empty string if none).
+    editor.selectAll()                   Focuses and selects all text.
+
+CURSOR / STATS METHODS
+    editor.getCursorLine()                1-based line number of the
+                                          cursor.
+    editor.getCursorColumn()               1-based column number of the
+                                          cursor.
+    editor.getLineCount()                   Total number of lines.
+    editor.getWordCount()                    Total number of words
+                                             (whitespace-separated).
+    editor.getCharCount()                     Total character count.
+
+EDITING BEHAVIOR
+    editor.undo()                             Triggers the browser's
+                                              native undo.
+    editor.redo()                              Triggers the browser's
+                                              native redo.
+    editor.setTabSize(n, useSpaces)             Controls what pressing Tab
+                                                does inside the editor.
+                                                By default, a <textarea>
+                                                moves keyboard focus away
+                                                on Tab — this library
+                                                overrides that so Tab
+                                                inserts indentation
+                                                instead:
+                                                  n           number of
+                                                              spaces (also
+                                                              sets the
+                                                              visual
+                                                              tab-size);
+                                                              default 4
+                                                  useSpaces   true = insert
+                                                              n spaces;
+                                                              false
+                                                              (default) =
+                                                              insert a real
+                                                              tab character
+    editor.setWrap(bool)                         true = soft-wrap long
+                                                  lines; false (default) =
+                                                  horizontal scroll
+                                                  instead.
+    editor.setReadOnly(bool)                      Makes the editor
+                                                  read-only when true.
+    editor.setPlaceholder(text)                    Placeholder shown when
+                                                    empty.
+
+APPEARANCE METHODS
+    editor.setPosition(x, y)
+    editor.setSize(w, h)
+    editor.setColor(fg, bg)                          Text color / back-
+                                                      ground color.
+    editor.setFont(family, size)                       Font family and/or
+                                                        size in pixels.
+    editor.setFontSize(px)
+
+EVENTS
+    editor.listen(event, fn)
+        "change"   fires on every edit;               fn(fullText)
+        "keydown"  fires on every keypress;            fn(key, domEvent)
+        "focus"    fires when the editor gains focus
+        "blur"     fires when the editor loses focus
+        "cursor"   fires on click and on keyup, useful for a live
+                   "Ln X, Col Y" status readout;        fn(line, column)
+
+EXAMPLE
+    let editor = TextArea("", 0, 28, 700, 440);
+    editor.setTabSize(4, true);           // Tab -> 4 spaces
+    editor.setPlaceholder("Start typing...");
+    editor.listen("change", fn(text) => print("#(editor.getWordCount()) words"));
+    editor.listen("cursor", fn(line, col) => print("Ln #line, Col #col"));
+
+
+================================================================================
+  11. CANVAS
+================================================================================
+
+    let cvs = Canvas(w, h);
+
+A raw drawing surface backed by an HTML5 <canvas> 2D context, plus a
+built-in keyboard/mouse input system and an animation loop helper. Good
+for games, visualizations, and simulations.
+
+CREATION
+    Canvas(w, h)                    w/h default to 400×300
+
+DRAWING METHODS
+    cvs.getCtx()                     Returns the raw CanvasRenderingContext2D
+                                     for anything not covered below.
+    cvs.clear(bg)                      Clears the canvas. If bg is given,
+                                       fills with that color instead of
+                                       transparency.
+    cvs.fill(color)                     Fills the entire canvas with color.
+    cvs.drawRect(x,y,w,h,color,filled)    filled defaults to true; pass
+                                          false to draw an outline only.
+    cvs.drawCircle(x,y,r,color,filled)     Same filled/outline behavior.
+    cvs.drawText(text,x,y,color,size,family)
+    cvs.drawLine(x1,y1,x2,y2,color,lineWidth)
+    cvs.drawPoly(points,color,filled)        points is an array of [x,y]
+                                             pairs.
+    cvs.drawArc(x,y,r,startAngle,endAngle,color,filled)
+                                             Angles are in radians.
+    cvs.drawImage(img,x,y,w,h)               img is a view returned by
+                                             loadImage()/pickImage().
+    cvs.setFont(size, family)
+    cvs.setAlpha(alpha)                       0.0–1.0 global transparency.
+    cvs.save() / cvs.restore()                  Push/pop the canvas
+                                                transform+style state.
+    cvs.translate(x, y)
+    cvs.rotate(degrees)
+    cvs.scale2(sx, sy)                           sy defaults to sx.
+    cvs.measureText(text)                         Returns the rendered
+                                                   width in pixels.
+    cvs.setSize(w, h)                              Resizes the canvas.
+    cvs.toDataURL()                                 Returns a base64 PNG
+                                                   data URL of the current
+                                                   frame.
+
+INPUT METHODS
+    cvs.isKeyDown(key)                Returns true while key is held down
+                                      (checks both e.key and e.code).
+    cvs.onKey(fn)                       fn(key, code) on every keydown.
+    cvs.onKeyUp(fn)                      fn(key, code) on every keyup.
+    cvs.onClick(fn)                       fn(x, y) — coordinates relative
+                                          to the canvas.
+    cvs.onMouse(event, fn)                  fn(x, y, domEvent) for any raw
+                                            mouse event name ("mousemove",
+                                            "mousedown", etc).
+    cvs.focus()                              Gives the canvas keyboard
+                                             focus (needed for key events
+                                             to fire).
+
+ANIMATION LOOP
+    cvs.loop(fn, fps)                  Starts an animation loop calling
+                                       fn(timestamp) up to fps times per
+                                       second (default 60).
+    cvs.stopLoop()                      Stops the loop.
+
+EXAMPLE
+    let cvs = Canvas(600, 400);
+    cvs.focus();
+    cvs.loop(fn(t) => {
+        cvs.clear("#1e1e2e");
+        cvs.drawCircle(300, 200, 40, "#50fa7b");
+        if cvs.isKeyDown("ArrowRight") { print("moving right"); }
+    }, 60);
+
+
+================================================================================
+  12. SCREEN
+================================================================================
+
+    let screen = Screen(w, h);
+
+A convenience widget that bundles a Window + a full-size Canvas together
+— the fastest way to get a game/visualization window on screen. Every
+Canvas drawing/input/loop method is proxied directly onto the returned
+window, so you can call them straight on the screen object.
+
+CREATION
+    Screen(w, h)                    w/h default to 600×432 (canvas height
+                                    is h-32 to make room for the title bar)
+
+PROXIED METHODS (call directly on the returned object)
+    clear, fill, drawRect, drawCircle, drawText, drawLine, drawPoly,
+    drawArc, drawImage, loop, stopLoop, onKey, onKeyUp, onClick,
+    isKeyDown, focus, getCtx, save, restore, translate, rotate, scale2,
+    setAlpha, measureText, toDataURL
+    — all identical in behavior to the Canvas versions in section 11.
+
+ADDITIONAL ATTRIBUTES
+    screen.canvas                    The underlying Canvas view, if you
+                                     need something not proxied above.
+    screen.setTitle / .show / .close / etc.
+                                     All normal Window methods still work,
+                                     since Screen is a Window underneath.
+
+EXAMPLE
+    let screen = Screen(640, 480);
+    screen.setTitle("My Game");
+    screen.focus();
+    screen.loop(fn(t) => {
+        screen.clear("#000");
+        screen.drawText("Hello, ZPP!", 20, 30, "#fff", 18);
+    });
+    screen.show();
+
+
+================================================================================
+  13. CAMERA
+================================================================================
+
+    let cam = Camera(canvas);
+
+A simple 2D camera helper for panning/zooming a Canvas — useful for
+scrolling game worlds or large diagrams. canvas is optional but required
+for follow() to compute centering.
+
+CREATION
+    Camera(canvasView)
+
+METHODS
+    cam.moveTo(x, y)                  Sets the camera's world position.
+    cam.zoomTo(zoom)                    Sets the zoom factor (1 = normal).
+    cam.follow(target, smoothing)         Smoothly moves the camera toward
+                                          target.x/target.y, centering the
+                                          attached canvas on it.
+                                          smoothing is 0–1 (default 0.1;
+                                          higher = snappier).
+    cam.apply()                            Pushes the canvas context state
+                                           and applies the camera's zoom +
+                                           translate. Call this before
+                                           drawing world-space content.
+    cam.reset()                             Restores the canvas context
+                                           state saved by apply(). Call
+                                           this after drawing world-space
+                                           content, before drawing any
+                                           fixed-position UI/HUD.
+
+ATTRIBUTES
+    cam.x, cam.y, cam.zoom
+
+EXAMPLE
+    let cvs = Canvas(800, 600);
+    let cam = Camera(cvs);
+    cam.follow(player, 0.08);
+    cvs.loop(fn(t) => {
+        cvs.clear("#000");
+        cam.apply();
+        cvs.drawCircle(player.x, player.y, 10, "#fff");
+        cam.reset();
+        cvs.drawText("Score: 0", 10, 20, "#fff");  // fixed HUD text
+    });
+
+
+================================================================================
+  14. PANEL
+================================================================================
+
+    let panel = Panel(x, y, w, h, bg);
+
+A simple rectangular container for grouping other widgets — good for
+sidebars, toolbars, or card-style UI sections.
+
+CREATION
+    Panel(x, y, w, h, bg)           w/h default to 200×150;
+                                    bg defaults to "#282a36"
+
+METHODS
+    panel.setBackground(color)
+    panel.setBorder(color, width)
+    panel.setRadius(px)
+    panel.add(child)                 Adds a widget as a child of the
+                                     panel (absolutely positioned inside
+                                     it).
+
+EXAMPLE
+    let sidebar = Panel(0, 28, 180, 472, "#20222e");
+    sidebar.setBorder("#44475a", 1);
+    sidebar.add(Label("Files", 12, 12));
+
+
+================================================================================
+  15. MENUBAR / MENU / MENUITEM                              *** NEW ***
+================================================================================
+
+    let menu = MenuBar(w);
+    let fileMenu = menu.addMenu("File");
+    fileMenu.addItem("New", fn() => ...);
+
+A classic File/Edit/Help-style dropdown menu bar, docked to the top of a
+window. Clicking a top-level menu name opens a dropdown; clicking outside
+any open menu, or selecting an item, closes it again.
+
+CREATION
+    MenuBar(w)                      w is the bar's width in pixels
+                                    (defaults to 100% of its parent if
+                                    omitted)
+
+MENUBAR METHODS
+    menu.addMenu(label)              Adds a top-level menu button (e.g.
+                                     "File") and returns a Menu object
+                                     (see below) so you can chain
+                                     .addItem() calls onto it.
+
+MENUBAR ATTRIBUTES
+    menu.__menus__                   Array of every Menu object created
+                                     via addMenu(), in order. Mostly
+                                     useful for introspection/testing.
+
+MENU METHODS (the object returned by addMenu)
+    fileMenu.addItem(label, fn)         Adds a clickable row to the
+                                        dropdown. fn is called with no
+                                        arguments when the item is
+                                        clicked; the dropdown closes
+                                        automatically first. Returns the
+                                        menu object, so calls chain.
+    fileMenu.addSeparator()               Adds a thin horizontal divider
+                                          line between groups of items.
+                                          Returns the menu object.
+
+EXAMPLE
+    let menu = MenuBar(760);
+    let fileMenu = menu.addMenu("File");
+    fileMenu.addItem("New",  fn() => doNew());
+    fileMenu.addItem("Open", fn() => doOpen());
+    fileMenu.addSeparator();
+    fileMenu.addItem("Save", fn() => doSave());
+    fileMenu.addSeparator();
+    fileMenu.addItem("Exit", fn() => win.close());
+
+    let editMenu = menu.addMenu("Edit");
+    editMenu.addItem("Undo", fn() => editor.undo());
+    editMenu.addItem("Redo", fn() => editor.redo());
+
+    win.add(menu);
+
+NOTE: MenuBar is a plain widget like any other — add it to a window with
+win.add(menu) (or place it in a Scene) just like a Button or Label.
+
+
+================================================================================
+  16. STATUSBAR                                              *** NEW ***
+================================================================================
+
+    let status = StatusBar(text, w);
+
+A thin bar docked to the bottom of its parent, meant for things like
+"Ln 4, Col 12", word counts, or a "Saved"/"Unsaved changes" indicator.
+
+CREATION
+    StatusBar(text, w)               text is the initial contents;
+                                     w is the bar's width in pixels
+                                     (defaults to 100% of its parent)
+
+METHODS
+    status.setText(text)              Replaces the entire status text.
+    status.setParts(partsArray)         Convenience for multi-segment
+                                        status bars — joins the array with
+                                        a " | " separator:
+                                          status.setParts(["Ln 4, Col 12",
+                                                           "128 words",
+                                                           "Saved"]);
+                                        renders as:
+                                          "Ln 4, Col 12   |   128 words   |   Saved"
+    status.setColor(color)               Sets the text color.
+    status.setBackground(color)           Sets the bar's background color.
+
+EXAMPLE
+    let status = StatusBar("Ready", 760);
+    editor.listen("cursor", fn(line, col) => {
+        status.setParts(["Ln #line, Col #col", "#(editor.getWordCount()) words"]);
+    });
+    win.add(status);
+
+
+================================================================================
+  17. DIALOG / ASKBOX / CONFIRMBOX
+================================================================================
+
+Three ready-made modal-style popup windows for the most common prompts.
+Each one is itself a small Window internally, so it appears, is draggable,
+and closes just like any other window.
+
+17.1  Dialog(message, title)  — simple alert
+-----------------------------------------------
+    Dialog("File saved successfully.", "Notepad");
+
+Shows a message with a single OK button. Returns the Window view for the
+popup (rarely needed).
+
+17.2  AskBox(message, callback, title)  — ask for typed text
+-----------------------------------------------------------------
+    AskBox("Enter a file name:", fn(value) => {
+        if value != null { print("You typed: #value"); }
+    }, "Save As");
+
+Shows a message, a text field, and OK/Cancel buttons. callback is called
+with the typed string if OK was pressed, or null if Cancel was pressed (or
+the window was closed).
+
+17.3  ConfirmBox(message, callback, title)  — Yes/No confirmation  *** NEW ***
+------------------------------------------------------------------------------
+    ConfirmBox("Discard unsaved changes?", fn(yes) => {
+        if yes { doDiscard(); }
+    }, "Unsaved Changes");
+
+Shows a message with Yes/No buttons (no text field). callback is called
+with true if Yes was pressed, or false if No was pressed. This fills the
+gap AskBox leaves — AskBox always expects typed text, which is awkward for
+a plain yes/no decision.
+
+
+================================================================================
+  18. IMAGES — loadImage / pickImage
+================================================================================
+
+    loadImage(src, callback)
+    pickImage(callback)
+
+loadImage(src, cb)                  Loads an image from a URL or file path
+                                    in the background. cb(view) is called
+                                    with an image view once loaded
+                                    (view.ready = true, view.width /
+                                    view.height set), or cb(null) on
+                                    failure. Pass the returned view to
+                                    cvs.drawImage() or win.loadImage(url)
+                                    for a background.
+
+pickImage(callback)                  Opens the native file picker filtered
+                                    to image files, then loads whatever
+                                    the user selects the same way
+                                    loadImage() does. cb(view) is called
+                                    the same way.
+
+EXAMPLE
+    pickImage(fn(img) => {
+        if img != null { cvs.drawImage(img, 0, 0, 200, 200); }
+    });
+
+
+================================================================================
+  19. FILE I/O — saveTextFile / openTextFile               *** NEW ***
+================================================================================
+
+The only way to move plain text in and out of the browser sandbox — these
+two functions are what make "Save" and "Open" in a Notepad-style app
+actually work. They use the browser's built-in download mechanism and
+native file picker, so no server or filesystem access is required, and
+they work the same way in a plain browser tab and inside an Electron
+renderer.
+
+19.1  saveTextFile(filename, content)
+----------------------------------------
+    saveTextFile("notes.txt", editor.getValue());
+
+Triggers a normal browser download of content as a file named filename.
+Returns true. There is no confirmation dialog from gui.zl itself — the
+browser's own download UI (or download bar) is what the user sees.
+
+19.2  openTextFile(callback, accept)
+----------------------------------------
+    openTextFile(fn(content, filename) => {
+        if content != null {
+            editor.setValue(content);
+            print("Opened #filename");
+        }
+    });
+
+Opens the native "choose a file" picker. If the user selects a file, it is
+read as text and callback(content, filename) is called with the file's
+text contents and its original filename. If the user cancels, callback is
+called as callback(null, null).
+
+accept (optional) is a comma-separated list of accepted file extensions
+or MIME types, same format as the HTML file input's "accept" attribute.
+Defaults to ".txt,.zpp,.zl,.md,.json,text/plain".
+
+    openTextFile(fn(content, name) => { ... }, ".csv,.tsv");
+
+
+================================================================================
+  20. KEYBOARD SHORTCUTS — onGlobalKey                     *** NEW ***
+================================================================================
+
+    let unregister = onGlobalKey(combo, callback);
+
+Registers a document-wide keyboard shortcut that fires no matter which
+widget currently has focus — needed for things like Ctrl+S / Ctrl+O /
+Ctrl+N that should work even while the user is typing in a TextArea.
+
+COMBO SYNTAX
+    combo is a string combining modifier names and a key, joined with "+":
+        "ctrl+s"           Ctrl (or Cmd on Mac) + S
+        "ctrl+shift+n"     Ctrl + Shift + N
+        "alt+f4"           Alt + F4
+        "ctrl+o"           Ctrl + O
+    Recognized modifier words: ctrl, cmd, meta (all treated as
+    "Ctrl-or-Cmd" so shortcuts work cross-platform), shift, alt.
+
+BEHAVIOR
+    - The matching keydown event automatically has preventDefault()
+      called on it, so the browser's own shortcut (e.g. Ctrl+S opening
+      the browser's save dialog) is suppressed.
+    - onGlobalKey returns an unregister function — call it to remove the
+      shortcut later:
+          let off = onGlobalKey("ctrl+s", fn(e) => save());
+          off();   // shortcut no longer fires
+
+EXAMPLE
+    onGlobalKey("ctrl+s", fn(e) => doSave());
+    onGlobalKey("ctrl+o", fn(e) => doOpen());
+    onGlobalKey("ctrl+n", fn(e) => doNew());
+
+
+================================================================================
+  21. UTILITY FUNCTIONS
+================================================================================
+
+    make(type, ...args)              Generic widget constructor — see
+                                     section 3.4.
+
+    rgb(r, g, b)                      Returns "rgb(r,g,b)". r/g/b are
+                                     0–255.
+    rgba(r, g, b, a)                    Returns "rgba(r,g,b,a)". a is
+                                       0.0–1.0.
+    hex(color)                          Passes the value through as-is
+                                       (accepts any CSS color string,
+                                       including "#rrggbb").
+
+    isWidget(value)                     Returns true if value is a gui.zl
+                                       view (i.e. was created by one of
+                                       this library's functions).
+
+    closeAll()                           Closes every window currently
+                                        open and forgets about them.
+
+    allWindows()                          Returns an array of every
+                                         currently-open Window view.
+
+    viewPrint(win, text)                   Appends a line of monospaced
+                                           text directly into a window's
+                                           body — a quick way to build a
+                                           console/log panel without
+                                           managing Label widgets
+                                           yourself:
+                                              viewPrint(win, "Server started");
+                                              viewPrint(win, "Listening on :3000");
+
+EXAMPLE
+    for each w in allWindows() {
+        print(w.width);
+    }
+    closeAll();   // tidy up before exiting
+
+
+================================================================================
+  22. FULL EXAMPLE — BUILDING A NOTEPAD
+================================================================================
+
+This mirrors the accompanying notepad.zpp example file. It shows most of
+the library working together: Window, MenuBar, TextArea, StatusBar,
+ConfirmBox, saveTextFile/openTextFile, and onGlobalKey.
+
+    #import["gui.zl"];
+
+    str currentFileName = "untitled.txt";
+    bool isDirty = false;
+
+    let win = Window(760, 560);
+    win.setTitle("Notepad — untitled.txt");
+
+    let menu = MenuBar(760);
+    let fileMenu = menu.addMenu("File");
+    fileMenu.addItem("New",  fn() => doNew());
+    fileMenu.addItem("Open", fn() => doOpen());
+    fileMenu.addSeparator();
+    fileMenu.addItem("Save", fn() => doSave());
+
+    let editor = TextArea("", 0, 28, 760, 470);
+    editor.setTabSize(4, true);
+
+    let status = StatusBar("Ln 1, Col 1", 760);
+
+    win.add(menu);
+    win.add(editor);
+    win.add(status);
+    win.show();
+
+    editor.listen("change", fn(val) => { isDirty = true; });
+    editor.listen("cursor", fn(line, col) => {
+        status.setParts(["Ln #line, Col #col", "#(editor.getWordCount()) words"]);
+    });
+
+    func doNew() {
+        if isDirty {
+            ConfirmBox("Discard unsaved changes?", fn(yes) => {
+                if yes { editor.clear(); isDirty = false; }
+            }, "New File");
+        } else {
+            editor.clear();
+        }
+    }
+
+    func doOpen() {
+        openTextFile(fn(content, name) => {
+            if content != null {
+                editor.setValue(content);
+                currentFileName = name;
+                isDirty = false;
+            }
+        });
+    }
+
+    func doSave() {
+        saveTextFile(currentFileName, editor.getValue());
+        isDirty = false;
+    }
+
+    onGlobalKey("ctrl+s", fn(e) => doSave());
+    onGlobalKey("ctrl+o", fn(e) => doOpen());
+    onGlobalKey("ctrl+n", fn(e) => doNew());
+
+See notepad.zpp for the complete, runnable version with title-bar dirty
+markers ("*"), an About dialog, and Undo/Redo/Select-All wired into the
+Edit menu.
+
+
+================================================================================
+  23. RUNNING MODES & FALLBACK BEHAVIOR
+================================================================================
+
+- LOAD gui.js FROM YOUR RENDERER, NOT YOUR ELECTRON MAIN PROCESS. In an
+  Electron app, gui.js must be loaded by index.html (the renderer), the
+  same way a normal web page would load it — not require()'d from
+  main.js. The renderer is where real windows/widgets/canvas drawing
+  happen.
+- If gui.js does end up loaded from the main process or plain Node (no
+  DOM available), every function still exists and returns a validly-
+  shaped view so your program keeps running, but nothing is drawn and a
+  one-time console warning is printed per function explaining the
+  mistake, e.g.:
+
+      [gui.zl] 'createWindow' called outside Electron renderer.
+        ➜  Load gui.js inside index.html, not from Node main process.
+        ➜  Run:  electron main.js
+
+- saveTextFile/openTextFile/onGlobalKey specifically require a real
+  browser DOM (File/Blob/URL/document APIs) — in the no-DOM fallback mode
+  they also just warn and no-op (openTextFile's callback is still called,
+  with content = null, so your code's null-check branch runs safely).
+
+
+================================================================================
+  24. QUICK REFERENCE CARD
+================================================================================
+
+--- WINDOWS & LAYOUT ------------------------------------------------------
+  Window(w,h)                 .setTitle() .setBackground() .show() .hide()
+                               .close() .move() .resize() .onClose()
+                               .setScene() .add()
+  Scene(layout)                .add() .remove() .clear() .setLayout()
+  Screen(w,h)                   Window + Canvas combo, canvas methods
+                                proxied directly onto it
+  Panel(x,y,w,h,bg)              .setBackground() .setBorder() .setRadius()
+                                .add()
+
+--- WIDGETS -----------------------------------------------------------------
+  Button(label,x,y,w,h)          .work(fn) .listen() .pressed().do(fn)
+                                .setLabel() .setColor() .setBackground()
+                                .setFontSize() .setRadius() .setBorder()
+                                .setPosition() .setSize() .enable() .disable()
+  Label(text,x,y)                 .setText() .setColor() .setFontSize()
+                                .setFont() .setAlign() .setPosition()
+                                .setSize() .setBackground()
+  TextField(hint,x,y,w,h)          .getValue() .setValue() .clear() .focus()
+                                .setPosition() .setSize() .setColor()
+                                .setFontSize() .setReadOnly() .enable()
+                                .disable() .listen()
+  TextArea(text,x,y,w,h)  *NEW*     .getValue() .setValue() .clear() .focus()
+                                .insertAtCursor() .getSelection() .selectAll()
+                                .getCursorLine() .getCursorColumn()
+                                .getLineCount() .getWordCount() .getCharCount()
+                                .undo() .redo() .setTabSize() .setWrap()
+                                .setReadOnly() .setPlaceholder() .setPosition()
+                                .setSize() .setColor() .setFont() .listen()
+  MenuBar(w)               *NEW*     .addMenu(label) -> menu
+                                menu.addItem(label,fn) menu.addSeparator()
+  StatusBar(text,w)        *NEW*     .setText() .setParts([...]) .setColor()
+                                .setBackground()
+
+--- DRAWING -----------------------------------------------------------------
+  Canvas(w,h)                     .getCtx() .clear() .fill() .drawRect()
+                                .drawCircle() .drawText() .drawLine()
+                                .drawPoly() .drawArc() .drawImage()
+                                .setFont() .setAlpha() .save() .restore()
+                                .translate() .rotate() .scale2()
+                                .measureText() .setSize() .toDataURL()
+                                .isKeyDown() .onKey() .onKeyUp() .onClick()
+                                .onMouse() .focus() .loop() .stopLoop()
+  Camera(canvas)                    .moveTo() .zoomTo() .follow() .apply()
+                                .reset()
+
+--- DIALOGS -----------------------------------------------------------------
+  Dialog(msg,title)                 OK-only alert
+  AskBox(msg,cb,title)                cb(text|null) — typed input
+  ConfirmBox(msg,cb,title)  *NEW*      cb(true|false) — Yes/No
+
+--- FILES & IMAGES ------------------------------------------------------------
+  loadImage(src,cb)                   cb(imageView|null)
+  pickImage(cb)                        cb(imageView|null) via file picker
+  saveTextFile(name,content)   *NEW*    triggers a browser download
+  openTextFile(cb,accept)      *NEW*     cb(content|null, filename|null)
+
+--- SHORTCUTS & UTILITIES -----------------------------------------------------
+  onGlobalKey(combo,fn)         *NEW*     e.g. onGlobalKey("ctrl+s", fn)
+  make(type,...args)                       generic widget constructor
+  rgb(r,g,b)  rgba(r,g,b,a)  hex(c)          color string builders
+  isWidget(v)  closeAll()  allWindows()        introspection / cleanup
+  viewPrint(win,text)                            quick console-style logging
+
+================================================================================
+  END OF DOCUMENTATION
+  gui.zl v2.0 — companion library reference for ZETA++ (ZPP)
+================================================================================

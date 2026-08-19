@@ -1,0 +1,1768 @@
+============================================================
+           ZETA.ZL LIBRARY — FULL REFERENCE DOCUMENTATION
+                  Runtime Version: 1.0.0  (zeta.zl)
+         Built on: ZETA++ Language (ZPP) v7.0 (Stable)
+============================================================
+
+  This document is a complete reference to everything exposed
+  by the zeta.zl runtime library: classes, subsystems, tags,
+  directives, syntax constructs, and built-in examples.
+
+  Cross-references to ZETA++ base language (MANUAL_DOCS.txt)
+  are marked [→ ZPP manual §N] where relevant.
+
+============================================================
+TABLE OF CONTENTS
+============================================================
+
+  1.  Architecture Overview
+  2.  Execution Pipeline
+  3.  Global Constants
+  4.  Zeta.zl Syntax (new constructs beyond ZPP)
+  5.  Token Taxonomy
+  6.  ZetaLexer
+  7.  ZetaParser
+  8.  ZetaRegisterFile
+  9.  ZetaMemoryManager
+  10. ZetaTagEngine  — all built-in tags
+  11. ZetaDirectiveEngine  — all @-directives
+  12. ZetaPortionRegistry
+  13. ZetaEventBus
+  14. ZetaGUI
+  15. ZetaEngine3D
+  16. ZetaPhysicsWorld
+  17. ZetaInputManager
+  18. ZetaModuleLoader
+  19. ZetaTerminal
+  20. ZetaSafeLayer
+  21. ZetaIRCompiler
+  22. ZetaExecutor
+  23. ZetaRuntime  (top-level orchestrator)
+  24. ZetaError
+  25. Built-in Example Programs
+  26. Module Export Reference
+  27. Quick-Syntax Cheat Sheet
+
+============================================================
+1.  ARCHITECTURE OVERVIEW
+============================================================
+
+  zeta.zl is a full language extension on top of ZPP (the
+  ZETA++ base interpreter). ZPP only understands standard
+  identifiers, literals, and basic control flow. zeta.zl
+  adds special syntax that ZPP cannot parse on its own:
+
+    Operators added by zeta.zl:
+      @   — directive prefix
+      #   — (inherited from ZPP interpolation)
+      %   — register dereference sigil
+      ^   — (reserved)
+      ->  — result-binding / return arrow
+      :   — slot separator / body-open prefix
+      :-> — body-open arrow
+      $   — allocation sigil
+      $-> — register-write arrow
+
+  To keep ZPP safe, ALL such syntax is intercepted by the
+  ZetaSafeLayer before ZPP's parser ever sees it.
+
+  Subsystems
+  ──────────
+    ZetaRegisterFile      8 registers × 4 typed slots
+    ZetaMemoryManager     Allocation ledger with free()
+    ZetaTagEngine         40+ execution-modifier <tags>
+    ZetaDirectiveEngine   18 @-directives
+    ZetaPortionRegistry   portion / section namespace tree
+    ZetaGUI               Electron + Canvas rendering
+    ZetaEngine3D          Scene graph + mesh + physics
+    ZetaModuleLoader      .zl library integration
+
+
+============================================================
+2.  EXECUTION PIPELINE
+============================================================
+
+  .zl source file
+      │
+  ZetaSafeLayer ─── rewrites special syntax to placeholders
+      │               BEFORE ZPP's parser sees raw chars
+      │
+  ZetaLexer ──────── tokenises all zeta.zl special syntax
+      │
+  ZetaParser ─────── builds ZetaAST (recursive descent)
+      │
+  ZetaIRCompiler ─── emits ZPP-safe __zeta_* call IR
+      │
+  ZPP Runtime ────── sees ONLY safe function calls
+      │
+  ZetaExecutor ───── resolves tags, directives, side-effects
+
+  IMPORTANT: Arithmetic operators (+, -, *, /, =, >, <) are
+  never emitted raw into ZPP IR. They are compiled to
+  __zl_calc__(a, "op", b) calls.
+
+
+============================================================
+3.  GLOBAL CONSTANTS
+============================================================
+
+  ZL_VERSION   = '1.0.0'
+      Library version string.
+
+  ZL_MAX_REGS  = 8
+      Number of hardware-style registers (r1..r8).
+
+  ZL_REG_SLOTS = 4
+      Number of typed slots per register (0..3).
+
+
+============================================================
+4.  ZETA.ZL SYNTAX — NEW CONSTRUCTS BEYOND ZPP
+============================================================
+
+  4.1  medium_zeta Block
+  ──────────────────────
+  The top-level namespace declaration. Must be opened with
+  the :-> body-arrow and closed with -> result(...).
+
+    medium_zeta :-> {
+        @directive          // optional block-level directives
+        portion .name
+            section <func>.myFunc -> num, str :->
+                ...
+    } -> result([myFunc]);
+
+  4.2  portion
+  ────────────
+  A named namespace grouping sections (functions/structs).
+
+    portion .myPortion
+        section <func>.doThing :->
+            ...
+
+  4.3  section
+  ────────────
+  Declares a function or struct inside a portion.
+
+    section <func>.name -> paramType, paramType :->
+        // body
+
+    section <struct>.name -> field1Type, field2Type :->
+        // (struct factory, no body required)
+
+  4.4  Register Syntax
+  ────────────────────
+  Registers: r1 .. r8 (8 total)
+  Slots per register: :0 .. :3 (4 total)
+
+    r1 $-> <type>:value, <type>:value;    // write register
+    %r1                                    // read all slots
+    %r1:0                                  // read slot 0
+    free r1, r2;                           // zero registers
+
+  4.5  Function Call Syntax
+  ─────────────────────────
+    .portion --->funcName --> arg1, arg2 -> <tag><$rN>;
+    //         ^^^^^^^^^^^    ^^^^^^^^^     ^^^^^^^^^^
+    //         call-open      arg-sep       result tag
+    //         (---> )        (-->)         bound to register
+
+  4.6  result() Declaration
+  ─────────────────────────
+  Closes the medium_zeta block and exports named symbols.
+
+    -> result([func1, func2], [Struct1]);
+
+  4.7  Arrow Tokens Summary
+  ─────────────────────────
+    --->   ARROW_TRIPLE   open a function call
+    -->    ARROW_DOUBLE   separate arguments
+    ->     ARROW_SINGLE   result-binding / return
+    :->    COLON_ARROW    open a body (section/medium_zeta)
+    $->    DOLLAR_ARROW   write to a register
+
+
+============================================================
+5.  TOKEN TAXONOMY
+============================================================
+
+  The ZetaLexer produces the following token types:
+
+  Structure Tokens
+    MEDIUM_ZETA, LBRACE, RBRACE, NEWLINE, INDENT, DEDENT
+    COMMA, SEMICOLON, DOT, COLON
+
+  Arrow Family
+    ARROW_TRIPLE (---)    call-open
+    ARROW_DOUBLE (-->)    arg-separator
+    ARROW_SINGLE (->)     result-binding / return
+    COLON_ARROW  (:->)    body-open
+    DOLLAR_ARROW ($->)    register-write
+
+  Memory / Register
+    DOLLAR      ($)       allocate sigil
+    PERCENT     (%)       read sigil (standalone)
+    REGISTER    (r1..r8)  bare register reference
+    REG_SLOT    (r1:0)    bare slot-ref expression
+    REG_DEREF   (%r1, %r1:0)  dereferenced register value
+    FREE                  free keyword
+
+  Declaration Keywords
+    PORTION, SECTION, RESULT
+
+  Type Keywords
+    TYPE_NUM, TYPE_STR, TYPE_BOOL, TYPE_LET, TYPE_ARRAY
+
+  Section-Kind Keywords
+    SECT_FUNC, SECT_STRUCT
+
+  Tags and Directives
+    TAG        (<name> or <name><$rX[:slot]>)
+    DIRECTIVE  (@name)
+
+  Literals
+    NUMBER_LIT, STRING_LIT, BOOL_LIT
+
+  General
+    IDENTIFIER, EOF
+
+
+============================================================
+6.  ZETALEXER
+============================================================
+
+  Class: ZetaLexer
+
+  Constructor
+    new ZetaLexer(src: string)
+      Constructs a lexer for the given source string.
+
+  Methods
+    .tokenize() → Token[]
+      Runs the full tokenisation pass and returns an array
+      of token objects.
+
+  Each token object has the shape:
+    { type: string, val: any, line: number, col: number }
+
+  Internal helpers (not public API):
+    _ch(off?)   peek at character at offset
+    _adv()      advance one character
+    _match(s)   try to consume a literal string
+    _tok(...)   construct a token object
+    _skipLineComment()
+    _readStr()
+    _readNum()
+    _readIdent()
+    _emitIndent(spaces)
+
+  The lexer handles indent-based block structure via an
+  internal indent-level stack (_iStack) and a
+  beginning-of-line flag (_bol).
+
+
+============================================================
+7.  ZETAPARSER
+============================================================
+
+  Class: ZetaParser
+
+  Constructor
+    new ZetaParser(tokens: Token[])
+      Builds a recursive-descent parser from the token list
+      produced by ZetaLexer.
+
+  Methods
+    .parse() → AST.Program
+      Entry point. Returns the root AST node.
+
+  AST Node Types produced (kind field):
+    Program         — root node, contains body + directives
+    MediumBlock     — medium_zeta :-> { ... } -> result(...)
+    PortionDecl     — portion .name
+    SectionDecl     — section <func|struct>.name -> types :->
+    FuncBody        — list of statements
+    RegWrite        — rN $-> <type>:val, ...
+    FreeStmt        — free r1, r2, ...
+    CallExpr        — .portion --->func --> args -> <tag>
+    DirectiveStmt   — @name (standalone)
+    ResultDecl      — -> result([...])
+    TagNode         — <tagName> or <tagName><$rN[:slot]>
+    RegRead         — %rN or %rN:slot
+    TypedValue      — <type>:value
+    Literal         — num / str / bool literal
+    Identifier      — bare identifier
+
+  Internal parse methods:
+    _parseMediumBlock()
+    _parsePortion()
+    _parseSection()
+    _parseTypeName()
+    _parseFuncBody()
+    _parseStatement()
+    _parseRegWrite()
+    _parseTypedValue()
+    _parseFreeStmt()
+    _parseDirectiveStmt()
+    _parseCallExpr(directive?)
+    _parseArg()
+    _parseLiteral()
+    _parseResultArgs()
+
+
+============================================================
+8.  ZETAREGISTERFILE
+============================================================
+
+  Class: ZetaRegisterFile
+
+  Provides 8 registers (r1..r8), each with 4 typed slots
+  (0..3). Slot objects have the shape { type, value }.
+
+  Constructor
+    new ZetaRegisterFile()
+
+  Methods
+    .write(r, assignments)
+      Write consecutive slots of register r from an array of
+      assignment objects: { typeTok, value }.
+      Throws if register is locked or out of range.
+
+    .writeSlot(r, slot, type, value)
+      Write a single slot with a specific type and value.
+
+    .read(r) → slot[]
+      Read all 4 slot objects of register r.
+
+    .readSlot(r, slot) → { type, value }
+      Read one specific slot object.
+
+    .readValue(r, slot?) → any
+      If slot is given, returns that slot's .value.
+      If slot is null, returns the single non-null value if
+      only one slot is set, or a 4-element array otherwise.
+
+    .free(...regs)
+      Zero out all slots of the specified registers and
+      remove any locks on them.
+
+    .lock(r)
+      Lock a register to prevent writes (used during 3D/
+      physics operations).
+
+    .unlock(r)
+      Remove a lock from a register.
+
+    .dump() → object
+      Returns a human-readable object mapping r1..r8 to
+      formatted slot descriptions. Useful for debugging.
+
+  Validation
+    _validateReg(r)   — throws ZetaError if r < 1 or r > 8
+    _validateSlot(s)  — throws ZetaError if s < 0 or s > 3
+
+  Register access syntax (in .zl source):
+    r1 $-> <num>:42;          // write 42 to r1 slot 0
+    %r1                        // read all slots of r1
+    %r1:0                      // read slot 0 of r1
+    free r1;                   // zero r1
+
+
+============================================================
+9.  ZETAMEMORYMANAGER
+============================================================
+
+  Class: ZetaMemoryManager
+
+  A simple allocation ledger. Addresses are integers starting
+  at 0x1000. Each cell stores: { size, type, data, freed }.
+
+  Constructor
+    new ZetaMemoryManager()
+
+  Methods
+    .alloc(type, data) → address (number)
+      Allocates a new cell and returns its address.
+      Increments internal stats.
+
+    .read(addr) → data
+      Reads the data stored at address.
+      Throws ZetaError on invalid address or use-after-free.
+
+    .write(addr, data)
+      Overwrites the data at address.
+      Throws ZetaError if address is invalid or freed.
+
+    .free(addr)
+      Marks a cell as freed (does not erase data).
+
+    .freeAll()
+      Marks every allocated cell as freed.
+
+    .stats() → object
+      Returns { allocs, frees, bytesAllocated, liveObjects }.
+
+  Internal
+    ._sizeof(type, data) → number (bytes)
+      num  = 8 bytes
+      bool = 1 byte
+      str  = length × 2 bytes
+      array= length × 8 bytes
+      let/other = 64 bytes (default)
+
+  Size accounting is approximate (for diagnostic purposes).
+
+
+============================================================
+10. ZETATAGENGINE — BUILT-IN TAGS
+============================================================
+
+  Class: ZetaTagEngine
+
+  Tags are execution-modifier functions applied via <tagName>
+  syntax. They are NOT syntax keywords — they are dispatched
+  at runtime by a handler Map.
+
+  Constructor
+    new ZetaTagEngine(runtime: ZetaRuntime)
+
+  Methods
+    .register(name, fn)
+      Register a new tag handler at runtime.
+      fn receives (ctx, runtime) and returns a value.
+
+    .execute(tagName, ctx) → any
+      Dispatch a tag by name with a context object.
+      Throws ZetaError if the tag name is unrecognised.
+
+  ─────────────────────────────────────────────────────────
+  BUILT-IN TAG REFERENCE
+  ─────────────────────────────────────────────────────────
+
+  <getVal>
+    Extracts ctx.value (or the entire ctx if .value is
+    undefined). Used to capture call results into registers.
+
+  <cast>
+    Type-cast ctx.value to ctx.targetType.
+    Supported target types: 'num', 'str', 'bool', 'array'.
+
+  <calc>
+    Safe sandboxed arithmetic. ctx must include:
+      op  — one of the operations below
+      a   — left operand
+      b   — right operand (where applicable)
+    Operations:
+      add    a + b
+      sub    a - b
+      mul    a * b
+      div    a / b  (returns Infinity on divide-by-zero)
+      mod    a % b
+      pow    a ^ b
+      neg    -a
+      abs    |a|
+      sqrt   √a
+      floor  ⌊a⌋
+      ceil   ⌈a⌉
+      round  round(a)
+      min    min(a, b)
+      max    max(a, b)
+      clamp  clamp(a, b, c)   (value, lo, hi)
+      lerp   lerp(a, b, t)    (start, end, factor)
+
+  <cmp>
+    Comparison operations. Returns boolean.
+    ctx: { op, a, b }
+    Operations: eq, neq, lt, lte, gt, gte
+
+  <logic>
+    Boolean operations. Returns boolean.
+    ctx: { op, a, b }
+    Operations: and, or, not, xor
+
+  <bit>
+    Bitwise operations.
+    ctx: { op, a, b }
+    Operations: and (&), or (|), xor (^), not (~),
+                shl (<<), shr (>>), ushr (>>>)
+
+  <mem>
+    Memory operations (delegates to ZetaMemoryManager).
+    ctx: { op, ... }
+    Operations:
+      alloc   ctx.type, ctx.data  → address
+      read    ctx.addr            → data
+      write   ctx.addr, ctx.data  → address
+      free    ctx.addr            → null
+      stats                       → stats object
+
+  <flow>
+    Control flow modifier.
+    ctx: { op, condition, then, else, action }
+    Operations:
+      if      return ctx.then if condition, else ctx.else
+      unless  return ctx.then if !condition, else ctx.else
+      when    call ctx.action() if condition (side-effect)
+
+  <loop>
+    Numeric loop helper. Returns array of body results.
+    ctx: { from, to, step, body (function) }
+    Iterates from `from` to `to` with step (default 1).
+
+  <iter>
+    Array iteration helper.
+    ctx: { items (array), body (function) }
+    Maps body over each item. Returns result array.
+
+  <io>
+    Terminal / stream I/O.
+    ctx: { op, data }
+    Operations:
+      print / write  — write to stdout (no newline)
+      println        — write with newline (console.log)
+      read           — synchronous stdin read (Node only)
+
+  <render>
+    Signal the GUI system to render.
+    ctx: { target, data }
+    If a GUI is active, calls gui.render(target, data).
+    Otherwise passes ctx.data through unchanged.
+
+  <event>
+    Event system bridge (delegates to ZetaEventBus).
+    ctx: { op, name, data, handler }
+    Operations: emit, on, off, once
+
+  <async>
+    Asynchronous scheduling.
+    ctx: { op, fn, args, ms, promises }
+    Operations:
+      spawn  — resolve then call fn(args)
+      delay  — call fn() after ctx.ms milliseconds
+      all    — Promise.all(ctx.promises)
+      race   — Promise.race(ctx.promises)
+
+  <err>
+    Error creation and throwing.
+    ctx: { op, message }
+    Operations:
+      throw  — throw a new ZetaError(message)
+      make   — return a new ZetaError(message)
+
+  <fmt>
+    String formatting.
+    ctx: { op, value, template?, vars?, width?, fill?,
+           len?, indent? }
+    Operations:
+      template   — fill {key} placeholders from ctx.vars
+      pad        — padStart to ctx.width with ctx.fill
+      trunc      — slice to ctx.len
+      upper      — toUpperCase
+      lower      — toLowerCase
+      json       — JSON.stringify with optional ctx.indent
+
+  <shape>
+    GUI shape descriptor factory. Returns a shape object
+    consumed by ZetaGUI._drawShape().
+    ctx: { kind, x, y, w, h, fill, stroke, strokeWidth,
+           opacity, radius, points, path, clip }
+    kind options: 'rect', 'circle', 'ellipse', 'polygon',
+                  'path', 'text', 'line'
+    Returns: { _zetaShape: true, kind, x, y, width,
+               height, fill, stroke, strokeWidth, opacity,
+               radius, points, path, clip }
+
+  <mesh>
+    3D mesh descriptor factory.
+    ctx: { name, vertices, faces, normals, uvs, material }
+    Returns: { _zetaMesh: true, name, vertices, faces,
+               normals, uvs, material }
+
+  <physics>
+    Physics body descriptor factory.
+    ctx: { shape, mass, restitution, friction, kinematic,
+           pos, vel, angVel }
+    shape options: 'box', 'sphere', 'capsule', 'mesh'
+    Returns: { _zetaPhysics: true, shape, mass,
+               restitution, friction, kinematic,
+               position, velocity, angularVel }
+
+  <shader>
+    GLSL shader program descriptor.
+    ctx: { vert, frag, uniforms, attributes }
+    If vert/frag are omitted, the engine's built-in default
+    vertex/fragment shaders are used.
+    Returns: { _zetaShader: true, vertexSrc, fragmentSrc,
+               uniforms, attributes }
+
+  <input>
+    Input system bridge (delegates to ZetaInputManager).
+    ctx: { op, key, action, fn }
+    Operations:
+      isDown  — returns bool for ctx.key
+      mouse   — returns current mouse state object
+      bind    — bind key/action to a function
+    Default: returns full input state object.
+
+  <debug>
+    Debug and diagnostic operations.
+    ctx: { op, label, value, condition, message }
+    Operations:
+      dump      — console.log label + value
+      regDump   — console.table of all registers
+      memStats  — console.log memory stats
+      assert    — throw ZetaError if !condition
+      trace     — console.trace with label
+
+  <type>
+    Type introspection on ctx.value.
+    Returns: 'num', 'str', 'bool', 'array', or 'let'.
+
+  <arr>
+    Array operations (immutable — returns new arrays).
+    ctx: { op, arr, val, idx, fn, from, to, other, init,
+           sep, depth }
+    Operations:
+      push     → [...arr, val]
+      pop      → arr[0..-1]
+      head     → arr[0]
+      tail     → arr[1..]
+      len      → arr.length
+      get      → arr[idx]
+      set      → copy with arr[idx] = val
+      map      → arr.map(fn)
+      filter   → arr.filter(fn)
+      reduce   → arr.reduce(fn, init)
+      concat   → arr.concat(other)
+      slice    → arr.slice(from, to)
+      sort     → sorted copy
+      reverse  → reversed copy
+      flat     → arr.flat(depth)
+      uniq     → [...new Set(arr)]
+      find     → arr.find(fn)
+      includes → arr.includes(val)
+
+  <str>
+    String operations.
+    ctx: { op, val, sep, arr, sub, from, to, width, fill,
+           n, idx }
+    Operations:
+      len        → s.length
+      upper      → s.toUpperCase()
+      lower      → s.toLowerCase()
+      trim       → s.trim()
+      split      → s.split(sep)
+      join       → (arr).join(sep)
+      includes   → s.includes(sub)
+      startsWith → s.startsWith(sub)
+      endsWith   → s.endsWith(sub)
+      replace    → s.replace(from, to)
+      replaceAll → s.replaceAll(from, to)
+      slice      → s.slice(from, to)
+      pad        → s.padStart(width, fill)
+      repeat     → s.repeat(n)
+      charCode   → s.charCodeAt(idx)
+
+  <hash>
+    FNV-1a 32-bit hash of ctx.value (as string).
+    Returns a hex string like '0xA1B2C3D4'.
+    Pure JS — no native dependencies.
+
+  <rand>
+    Random value utilities.
+    ctx: { op, min, max, arr }
+    Operations:
+      float   → Math.random()          [0,1)
+      int     → random integer [min, max]
+      bool    → random boolean
+      pick    → random element from arr
+      shuffle → Fisher-Yates shuffled copy of arr
+
+  <time>
+    Timing utilities.
+    ctx: { op, start }
+    Operations:
+      now   → Date.now() (ms timestamp)
+      iso   → new Date().toISOString()
+      delta → Date.now() - ctx.start
+      perf  → performance.now() if available, else Date.now()
+
+  <pipe>
+    Functional pipeline.
+    ctx: { value, fns (array of functions) }
+    Passes ctx.value through each function in order.
+
+  <scope>
+    Isolated scope snapshot.
+    ctx: { fn?, value }
+    Calls ctx.fn() if it is a function, else returns
+    ctx.value. (Registers are not restored — scope only
+    takes a snapshot for diagnostic purposes.)
+
+  <anim>
+    Animation frame helper (browser only).
+    ctx: { op, fn, id }
+    Operations:
+      start → requestAnimationFrame(fn), returns frame ID
+      stop  → cancelAnimationFrame(id)
+
+  <json>
+    JSON operations.
+    ctx: { op, value, indent }
+    Operations:
+      parse      → JSON.parse(value)
+      stringify  → JSON.stringify(value, null, indent)
+      clone      → deep clone via JSON round-trip
+
+  <sys>
+    System information.
+    ctx: { op, key }
+    Operations:
+      platform → process.platform or 'browser'
+      version  → ZL_VERSION constant
+      env      → process.env[key]
+      argv     → process.argv
+
+  <net>
+    HTTP fetch helper (async).
+    ctx: { op, url, method, headers, body, json }
+    Operations:
+      fetch → fetch(url, opts) → Promise<text or JSON>
+
+  <buf>
+    Binary buffer operations (Node.js only).
+    ctx: { op, size, data, enc, buf }
+    Operations:
+      alloc → Buffer.alloc(size)
+      from  → Buffer.from(data, enc)
+      toHex → buf.toString('hex')
+      toB64 → buf.toString('base64')
+
+  <particle>
+    Particle system descriptor factory.
+    ctx: { count, lifetime, emitRate, pos, vel, spread,
+           color, size, gravity, texture, blendMode }
+    Returns: { _zetaParticle: true, count, lifetime,
+               emitRate, position, velocity, spread,
+               color, size, gravity, texture, blendMode }
+    Defaults:
+      count=100, lifetime=2.0, emitRate=10
+      gravity=-9.8, blendMode='additive'
+
+  ─────────────────────────────────────────────────────────
+  FULL LIST OF VALID TAG NAMES
+  (registered in VALID_TAGS set — usable in <tagName> form)
+  ─────────────────────────────────────────────────────────
+    Value & type:    getVal, cast, type, box, unbox
+    Arithmetic:      calc, cmp, logic, bit, abs, min,
+                     max, clamp, lerp
+    Memory:          mem, alloc, dealloc, ref, deref,
+                     clone, sizeof
+    Control flow:    flow, loop, iter, while, branch,
+                     jump, ret, break, continue
+    I/O:             io, fmt, print, read, write,
+                     flush, clear
+    Events/Concurrency: event, emit, on, off, once,
+                     async, sync, spawn, kill, watch,
+                     await, chan, send, recv, select
+    Error handling:  err, try, catch, throw, panic, recover
+    Scoping/Piping:  scope, pipe, chain, partial,
+                     curry, memoize
+    GUI/Rendering:   render, draw, paint, shape, widget,
+                     overlay, anim, frame, blend, clip,
+                     mask, transform, translate,
+                     rotate, scale
+    3D Engine:       mesh, scene, camera, light, physics,
+                     shader, texture, mat, particle,
+                     normal, uv, tbn, instance, lod,
+                     cull, raycast
+    Input:           input, key, mouse, touch,
+                     gamepad, gesture
+    Debug:           debug, trace, assert, bench, log,
+                     dump, profile, breakpoint
+    Modules:         import, export, bind, inject,
+                     require, provide
+    Data structures: arr, map, set, struct, tuple,
+                     json, buf, queue, stack, heap
+    String ops:      str, concat, split, trim, pad,
+                     match, replace, format,
+                     encode, decode
+    Crypto/Hashing:  hash, crypt, sign, verify,
+                     uuid, rand, nonce
+    Networking:      net, req, res, ws, rpc, grpc,
+                     fetch, socket
+    System:          sys, env, proc, fs, path, time,
+                     date, timer, interval
+
+
+============================================================
+11. ZETADIRECTIVEENGINE — @-DIRECTIVES
+============================================================
+
+  Class: ZetaDirectiveEngine
+
+  Directives are activated with the @name syntax. They can
+  prefix a single statement or appear inside a medium_zeta
+  block to activate for the entire block.
+
+  Constructor
+    new ZetaDirectiveEngine(runtime: ZetaRuntime)
+
+  Methods
+    .activate(name)    — add directive to active set
+    .deactivate(name)  — remove from active set
+    .isActive(name)    — check if directive is active
+    .handle(name, payload) → any
+      Dispatch a directive handler with a payload object.
+      Throws ZetaError if name is unknown.
+
+  ─────────────────────────────────────────────────────────
+  BUILT-IN DIRECTIVE REFERENCE
+  ─────────────────────────────────────────────────────────
+
+  @glb
+    Promotes a value to the global scope.
+    payload: { name, value }
+    Usage: makes a portion's symbol accessible globally.
+
+  @term
+    Terminal / console operations.
+    payload: { op, data?, title? }
+    Operations:
+      write      — write data to terminal
+      clear      — clear terminal screen
+      setTitle   — set terminal window title
+
+  @gui
+    Bootstrap and control the GUI subsystem (ZetaGUI).
+    Lazily creates the GUI instance if not yet active.
+    payload: { op, ... }
+    Operations:
+      createWindow  — create a new window (see §14)
+      show          — show a window
+      hide          — hide a window
+    Returns the ZetaGUI instance.
+
+  @engine
+    Bootstrap and control the 3D engine (ZetaEngine3D).
+    Lazily creates the engine if not yet active.
+    payload: { op, name?, scene?, mesh?, light?,
+               camera?, dt? }
+    Operations:
+      newScene   — create a new scene by name
+      addMesh    — add a mesh descriptor to a scene
+      addLight   — add a light to a scene
+      setCamera  — configure the scene camera
+      step       — advance physics by dt seconds
+      render     — render a scene to a target
+
+  @mem
+    Memory manager access.
+    payload: { op, type?, data?, addr? }
+    Operations:
+      alloc   — allocate data of type
+      free    — free an address
+      stats   — return memory statistics
+      freeAll — mark all allocations as freed
+    No payload: returns stats object.
+
+  @sys
+    System-level hooks.
+    payload: { op, code? }
+    Operations:
+      exit  — process.exit(code) on Node
+      info  — return { version, platform }
+      gc    — trigger full memory freeAll
+
+  @async
+    Asynchronous context.
+    payload: { op, fn }
+    Operations:
+      run — execute fn() in an async IIFE
+
+  @import
+    Module import.
+    payload: { name }
+    Calls ZetaModuleLoader.load(name) and returns the module.
+
+  @export
+    Symbol export.
+    payload: { name, value }
+    Writes the value into runtime.exports under name.
+
+  @debug
+    Toggle debug mode.
+    payload: { on? } (default: true)
+    When on, the runtime logs tokens, AST, and IR to console.
+
+  @net
+    Network operations.
+    Delegates to the <net> tag handler.
+    payload: same as <net> tag context.
+
+  @fs
+    File system access (Node / Electron only).
+    payload: { op, path?, data? }
+    Operations:
+      read    — readFileSync(path, 'utf8')
+      write   — writeFileSync(path, data)
+      exists  — existsSync(path)
+      ls      — readdirSync(path)
+
+  @crypto
+    Cryptographic helpers (Node only, uses 'crypto' module).
+    payload: { op, data?, n? }
+    Operations:
+      sha256 — SHA-256 hex digest of data
+      uuid   — generate a random UUID
+      rand   — hex string of n random bytes (default 16)
+
+  @thread
+    Worker-thread helpers (Node 12+).
+    payload: { op, code }
+    Operations:
+      spawn — new Worker(code, { eval: true })
+
+  @bench
+    Micro-benchmarking.
+    payload: { fn, runs? }
+    Runs fn() for ctx.runs iterations (default 1000).
+    Returns: { ms, runs }
+
+  @hot
+    Hot-reload trigger.
+    payload: { src }
+    Re-executes the given source string immediately.
+
+  @wasm
+    WebAssembly module loader (async).
+    payload: { url, imports? }
+    Fetches, compiles, and instantiates a .wasm file.
+    Returns the instance's exports object.
+
+  @strict
+    Enable strict-mode validation.
+    payload: { on? } (default: true)
+    When strict, directive handler errors are rethrown
+    instead of being silently swallowed.
+
+  @unsafe
+    Bypass runtime safety guards.
+    payload: any
+    Sets runtime._unsafe = true. Emits a console warning.
+    Use with caution.
+
+  @sandbox
+    Hard-isolate a portion.
+    payload: { portion }
+    Returns { sandboxed: true, name: portion }.
+
+  @native
+    Call into a host-provided native function.
+    payload: { fn (function), args? (array) }
+    Returns fn(...args).
+
+  @macro
+    Define a compile-time macro.
+    payload: { name, body }
+    Stores body in runtime.macros[name].
+
+  @deprecated
+    Emit a deprecation warning.
+    payload: { name, message? }
+    Logs a [ZETA DEPRECATED] warning to console.
+
+  @experimental
+    Log experimental API usage.
+    payload: { name? }
+    Logs a [ZETA EXPERIMENTAL] warning to console.
+
+  ─────────────────────────────────────────────────────────
+  FULL LIST OF VALID DIRECTIVE NAMES
+  (registered in VALID_DIRECTIVES set)
+  ─────────────────────────────────────────────────────────
+    glb, term, gui, engine, mem, sys, async, import, export,
+    debug, net, fs, crypto, time, env, proc, thread, wasm,
+    hot, strict, unsafe, sandbox, native, extern, inline,
+    macro, bench, profile, deprecated, experimental
+
+
+============================================================
+12. ZETAPORTIONREGISTRY
+============================================================
+
+  Class: ZetaPortionRegistry
+
+  Manages the namespace tree of portions and their sections.
+
+  Constructor
+    new ZetaPortionRegistry()
+
+  Methods
+    .registerPortion(name) → portion object
+      Ensure a portion exists; return it.
+      Internal structure: { name, funcs: Map, structs: Map }
+
+    .registerFunc(portionName, funcName, fn, params)
+      Register a callable function inside a portion.
+      fn is a JavaScript function.
+      params is an array of type strings.
+
+    .registerStruct(portionName, structName, fields)
+      Register a struct factory inside a portion.
+      fields is an array of field-type strings.
+
+    .call(portionName, funcName, args) → any
+      Invoke a registered portion function with args array.
+      Throws ZetaError if portion or function is not found.
+
+    .has(portionName, funcName) → boolean
+      Check if a function is registered in a portion.
+
+    .listPortions() → string[]
+      Return all registered portion names.
+
+    .listFuncs(portionName) → string[]
+      Return all function names in a given portion.
+
+  Call syntax in .zl source:
+    .myPortion --->myFunction --> arg1, arg2;
+
+
+============================================================
+13. ZETAEVENTBUS
+============================================================
+
+  Class: ZetaEventBus
+
+  A simple pub-sub event system used internally by all
+  runtime subsystems.
+
+  Constructor
+    new ZetaEventBus()
+
+  Methods
+    .on(event, fn)
+      Subscribe fn to event. fn is called every time
+      the event is emitted.
+
+    .once(event, fn)
+      Subscribe fn to event for one emission only.
+      Automatically removed after first call.
+
+    .off(event, fn)
+      Unsubscribe a specific fn from an event.
+
+    .emit(event, data)
+      Call all subscribers for event, passing data.
+      Removes any 'once' listeners that have fired.
+
+    .removeAll(event)
+      Remove all listeners for a given event.
+
+  Internal events emitted by the runtime:
+    'runtime:executed'           after any execute() call
+    'engine:sceneCreated'        when a new 3D scene is made
+    'engine:meshAdded'           when a mesh is added
+    'engine:step'                each physics step
+    'engine:softRenderDone'      after a software render
+    'gui:windowCreated'          when a GUI window is made
+    'gui:frameRendered'          after each render pass
+    'input:keydown'              key press
+    'input:keyup'                key release
+    'input:mousemove'            mouse movement
+    'input:mousedown'            mouse button press
+    'input:mouseup'              mouse button release
+    'input:wheel'                scroll wheel
+    'input:gamepadConnected'     gamepad connected
+
+
+============================================================
+14. ZETAGUII  (GUI SUBSYSTEM)
+============================================================
+
+  Class: ZetaGUI
+
+  Electron + Canvas rendering pipeline for custom-shaped
+  windows and 2D shape drawing.
+
+  Constructor
+    new ZetaGUI(runtime: ZetaRuntime)
+    Detects Electron via process.versions.electron.
+
+  Window Management Methods
+    .createWindow(opts?) → windowId (number)
+      Create a new window.
+      opts: { title, width, height, shape, radius }
+      shape options: 'rect', 'rounded', 'ellipse',
+                     'polygon', 'custom'
+      In Electron: uses BrowserWindow + setShape().
+      In browser:  uses <canvas> + CSS clip-path.
+      Emits: 'gui:windowCreated'
+      Returns: numeric window ID.
+
+    .show(windowId)
+      Make a window visible.
+
+    .hide(windowId)
+      Hide a window.
+
+    .close(windowId)
+      Close and remove a window (also removes canvas from DOM).
+
+    .on(windowId, eventName, handler)
+      Wire a DOM/Electron event to a handler function.
+
+  Rendering Methods
+    .addToLayer(layerName, shape)
+      Add a shape descriptor to a named layer.
+      Layers are rendered in the order they are added.
+
+    .render(windowId, shapes?) → shapeCount
+      Clear the window and draw all shapes (global +
+      parameter shapes) in order.
+      Emits: 'gui:frameRendered'
+
+  Shape Descriptor Fields (from <shape> tag):
+    _zetaShape  true (marker)
+    kind        'rect' | 'circle' | 'ellipse' |
+                'polygon' | 'path' | 'text' | 'line'
+    x, y        position
+    width, height  dimensions
+    fill        color string, 'none', or gradient spec
+    stroke      stroke color or 'none'
+    strokeWidth stroke width in pixels
+    opacity     0.0 .. 1.0
+    radius      corner radius (for rounded rect / circle)
+    points      [[x,y],...] for polygon
+    path        SVG path string for 'path' kind
+    clip        { x, y, w, h } clipping region
+    transform   { tx, ty, rotation, scaleX, scaleY }
+
+  For 'text' shapes additionally:
+    text, fontSize, fontFamily
+
+  For 'line' shapes additionally:
+    x2, y2 (endpoint)
+
+  ZetaCanvasRenderer (helper class)
+    .getOffscreenCanvas(w, h) → canvas
+      Returns an OffscreenCanvas (browser), a <canvas>
+      element (browser fallback), or a stub object
+      (Node/headless).
+
+  Activated via @gui directive.
+
+
+============================================================
+15. ZETAENGINE3D  (3D SCENE GRAPH)
+============================================================
+
+  Class: ZetaEngine3D
+
+  Scene graph, mesh management, lighting, camera, and
+  rendering. Detects Three.js at startup; falls back to an
+  internal software Z-buffer rasteriser.
+
+  Constructor
+    new ZetaEngine3D(runtime: ZetaRuntime)
+    Tries to load Three.js from global THREE or via require().
+    Always creates a ZetaPhysicsWorld internally.
+
+  Scene Management
+    .newScene(name) → name
+      Create and register a new scene.
+      Scene structure: { name, id, meshes, lights, camera,
+                         skybox, fog, physics, _three }
+      Emits: 'engine:sceneCreated'
+
+    .getScene(name) → scene object
+      Retrieve a scene by name.
+      Throws ZetaError if not found.
+
+  Camera
+    .setCamera(sceneName, camOpts) → camera object
+      Configure the scene camera.
+      camOpts: { fov, near, far, position, target, up }
+      Default camera: perspective, fov=75, near=0.1, far=1000
+                       positioned at (0, 0, 5), looking at origin.
+
+  Mesh Management
+    .addMesh(sceneName, meshDesc) → mesh object
+      Add a mesh to a scene.
+      meshDesc may be a string (primitive name) or a
+      mesh descriptor object ({ _zetaMesh: true, ... }).
+      If a physics descriptor (_zetaPhysics) is attached,
+      the body is registered with the physics world.
+      Emits: 'engine:meshAdded'
+
+    .removeMesh(sceneName, meshOrName)
+      Remove a mesh by name or reference from a scene.
+      Removes the Three.js object from scene if present.
+
+  Built-in Primitive Names (pass as string to addMesh)
+    'cube' / 'box'    { width:1, height:1, depth:1 }
+    'sphere'          { radius:0.5, segments:32 }
+    'plane'           { width:1, height:1 }
+    'cylinder'        { radiusTop:0.5, radiusBottom:0.5,
+                        height:1, segments:32 }
+    'cone'            { radiusTop:0, radiusBottom:0.5,
+                        height:1, segments:32 }
+    'torus'           { radius:0.5, tube:0.2, segments:32 }
+
+  Lighting
+    .addLight(sceneName, lightOpts?) → light object
+      Add a light source to a scene.
+      lightOpts: { kind, color, intensity, pos, castShadow }
+      kind options: 'point', 'directional', 'spot', 'ambient'
+      Defaults: kind='point', color=0xffffff, intensity=1.0
+
+  Materials
+    .createMaterial(opts?) → material object
+      Create a material descriptor.
+      opts: { kind, color, roughness, metalness, emissive,
+              opacity, transparent, wireframe, map, normalMap }
+      kind options: 'standard', 'phong', 'toon', 'wireframe',
+                    'unlit'
+      Defaults: kind='standard', roughness=0.5, metalness=0.0
+
+  Render Loop
+    .step(dt?) → actualDt (seconds)
+      Advance the physics simulation. If dt is omitted,
+      uses wall-clock delta since the last call.
+      Emits: 'engine:step'
+
+    .render(sceneName, rendererTarget?) → bool or pixel buffer
+      Render the scene.
+      With Three.js + renderer: calls three.render().
+      Without: runs the internal software rasteriser.
+      Software rasteriser returns a flat pixel array.
+      Emits: 'engine:softRenderDone' (software path)
+
+  Default GLSL Shaders (static strings)
+    ZetaEngine3D.DEFAULT_VERT_SRC
+      Attributes: position (vec3), normal (vec3), uv (vec2)
+      Uniforms:   modelViewMatrix (mat4), projectionMatrix (mat4)
+      Varyings:   vNormal (vec3), vUv (vec2)
+
+    ZetaEngine3D.DEFAULT_FRAG_SRC
+      Uniforms: lightDir (vec3), baseColor (vec3),
+                map (sampler2D), useMap (bool)
+      Applies Lambertian diffuse + texture lookup.
+
+  Static Helpers
+    ZetaEngine3D.primitives(name) → descriptor object
+    ZetaEngine3D._projectMesh(mesh, cam, buf, zbuf, w, h)
+      Internal orthographic projection for software render.
+
+  Activated via @engine directive.
+
+
+============================================================
+16. ZETAPHYSICSWORLD
+============================================================
+
+  Class: ZetaPhysicsWorld
+
+  Impulse-based rigid body physics with AABB broad-phase
+  collision detection and substep integration.
+
+  Constructor
+    new ZetaPhysicsWorld()
+
+  Methods
+    .createWorld() → world object
+      Create a new physics world.
+      World structure: { bodies, gravity, substeps, _pairs }
+      gravity: { x:0, y:-9.8, z:0 }
+      substeps: 4 (integration substeps per step)
+
+    .addBody(world, meshOrDesc) → body object
+      Register a rigid body in a world.
+      Reads physics properties from meshOrDesc._zetaPhysics.
+      Body fields: position, velocity, angularVel, mass,
+                   restitution, friction, kinematic, aabb,
+                   meshRef
+
+    .step(dt)
+      Advance ALL worlds by dt seconds.
+      For each world: substep integration → detect collisions
+      → resolve collisions.
+      Sync body positions back to mesh transform.
+
+  Internal methods
+    ._integrate(world, dt)     — apply gravity, integrate pos
+    ._detectCollisions(world)  — AABB broad-phase sweep
+    ._aabbOverlap(a, b)        — test two AABB bodies
+    ._resolveCollisions(world) — impulse response
+
+
+============================================================
+17. ZETAINPUTMANAGER
+============================================================
+
+  Class: ZetaInputManager
+
+  Keyboard, mouse, and gamepad input management.
+  Attaches listeners to window events (browser only).
+
+  Constructor
+    new ZetaInputManager(runtime: ZetaRuntime)
+
+  Methods
+    .attach()
+      Register all window event listeners.
+      No-op if already attached or window is unavailable.
+      Events wired: keydown, keyup, mousemove, mousedown,
+      mouseup, wheel, gamepadconnected, gamepaddisconnected.
+
+    .tick()
+      Advance per-frame key counters and poll gamepads.
+      Should be called once per render frame.
+
+    .isKeyDown(code) → boolean
+      Check if a key is currently held down.
+      code is a KeyboardEvent.code string (e.g. 'Space').
+
+    .isKeyJustDown(code) → boolean
+      True only on the first frame a key is pressed.
+
+    .isKeyJustUp(code) → boolean
+      True on the frame a key is released.
+
+    .getMouseState() → { x, y, buttons, wheel }
+      Returns a snapshot of the current mouse state.
+      buttons: { left, right, middle }
+
+    .getGamepad(idx) → Gamepad | null
+      Return the Gamepad object for index idx, or null.
+
+    .bind(key, action, fn)
+      Register a function to be called when key is pressed.
+
+    .getState() → { keys, mouse }
+      Full state snapshot of all keys and mouse.
+
+  Internal Events Emitted (via ZetaEventBus):
+    'input:keydown'   { key, raw }
+    'input:keyup'     { key, raw }
+    'input:mousemove' { x, y, buttons, wheel }
+    'input:mousedown' { button, x, y }
+    'input:mouseup'   { button }
+    'input:wheel'     { delta }
+    'input:gamepadConnected' { index }
+
+
+============================================================
+18. ZETAMODULELOADER
+============================================================
+
+  Class: ZetaModuleLoader
+
+  Loads .zl modules from DSALibraries, Node require(), or
+  the file system. Results are cached.
+
+  Constructor
+    new ZetaModuleLoader(runtime: ZetaRuntime)
+    Default search paths: './', './lib/', './modules/'
+
+  Methods
+    .load(moduleName) → module object
+      Load a module. Resolution order:
+        1. Cache (if already loaded)
+        2. DSALibraries registry (e.g. 'ascii.zl')
+           — calls lib.inject(globalScope)
+        3. Node require() across all search paths
+           (tries replacing .zl with .js)
+        4. File system readFileSync for .zl source files
+           — executes via runtime.execute()
+      Throws ZetaError if not found anywhere.
+
+    .addSearchPath(path)
+      Add an additional directory to the search path.
+
+    .listLoaded() → string[]
+      Return names of all cached (already-loaded) modules.
+
+  Usage in .zl source:
+    @import --->load --> "ascii.zl" -> <getVal><$r1>;
+
+
+============================================================
+19. ZETATERMINAL
+============================================================
+
+  Class: ZetaTerminal
+
+  A thin shim over stdout / console for terminal output.
+
+  Methods
+    .write(s)
+      Write string s to stdout (no newline).
+      Falls back to console.log in non-Node environments.
+
+    .writeln(s)
+      Write string s followed by a newline. (console.log)
+
+    .clear()
+      Clear the terminal screen (\x1Bc escape).
+
+    .setTitle(t)
+      Set the terminal window title via ANSI escape.
+
+
+============================================================
+20. ZETASAFELAYER
+============================================================
+
+  Class: ZetaSafeLayer  (static methods only)
+
+  The ONLY entry point ZPP ever uses. Rewrites all raw
+  zeta.zl special syntax into ZPP-legal identifiers before
+  ZPP's parser sees the source.
+
+  Static Methods
+    ZetaSafeLayer.transform(src) → safeIRString
+      Phase 1 pass. Replaces each construct:
+        :->         → __ZL_BODYOPEN__
+        $->         → __ZL_REGWRITE__
+        --->        → __ZL_CALLOPEN__
+        -->         → __ZL_ARGSEP__
+        ->          → __ZL_BIND__
+        @word       → __ZL_DIR_word__
+        %r1:0       → __ZL_REGREAD_1_0__
+        %r1         → __ZL_REGREAD_1_ALL__
+        <tag><$r2>  → __ZL_TAG_tag_REG2_ALL__
+        <tag>       → __ZL_TAG_tag__
+        a + b       → __zl_calc__(a,"add",b)
+        a - b       → __zl_calc__(a,"sub",b)
+        a * b       → __zl_calc__(a,"mul",b)
+        a / b       → __zl_calc__(a,"div",b)
+
+    ZetaSafeLayer.reverseMap(irToken) → zetaSyntax
+      Reverse-map a safe IR token to its original syntax.
+      Used for diagnostics and error messages.
+
+    ZetaSafeLayer.auditIR(ir) → violations[]
+      Validate that no raw arithmetic operators remain
+      in the emitted IR. Returns an array of violation
+      objects: { op, pos }.
+
+
+============================================================
+21. ZETAIRCOMPILER
+============================================================
+
+  Class: ZetaIRCompiler
+
+  Compiles a ZetaAST into a ZPP-safe IR string consisting
+  only of identifiers, literals, and __zeta_* function calls.
+
+  Constructor
+    new ZetaIRCompiler()
+
+  Methods
+    .compile(ast) → irString
+      Full compile pass over the AST.
+
+  IR Functions Emitted (all registered in globalScope):
+    __zeta_medium_open__(dirs)
+    __zeta_medium_close__()
+    __zeta_portion_begin__(name)
+    __zeta_portion_end__(name)
+    __zeta_section_begin__(kind, name, params)
+    __zeta_section_end__(name)
+    __zeta_reg_write__(reg, assignments)
+    __zeta_reg_read__(reg, slot)
+    __zeta_reg_free__(...regs)
+    __zeta_call__(portion, func, args, tag, directive)
+    __zeta_tag__(name, regRef)
+    __zeta_directive__(name, payload)
+    __zeta_result__(exports)
+    __zeta_typed__(type, value)
+    __zeta_lit__(type, value)
+    __zeta_id__(name)
+    __zl_calc__(a, op, b)     ← replaces all raw arithmetic
+
+
+============================================================
+22. ZETAEXECUTOR
+============================================================
+
+  Class: ZetaExecutor
+
+  Walks the ZetaAST and produces runtime values by
+  dispatching to subsystems.
+
+  Constructor
+    new ZetaExecutor(runtime: ZetaRuntime)
+
+  Methods
+    .exec(ast) → any
+      Dispatch on ast.kind and execute.
+
+  Per-node handlers:
+    _exec_Program        — run directives then body
+    _exec_MediumBlock    — activate directives, run portions
+    _exec_PortionDecl    — register portion, exec sections
+    _exec_SectionDecl    — build JS function or struct factory
+    _execFuncBody        — run statements; handle _zlReturn
+    _exec_RegWrite       — write values to register file
+    _exec_FreeStmt       — zero specified registers
+    _exec_CallExpr       — dispatch directive / portion / global
+    _exec_DirectiveStmt  — activate a directive
+    _exec_ResultDecl     — collect and return exports
+
+  Helper methods:
+    _applyTag(tagNode, value) → result
+      Run the tag engine and optionally write to a register.
+
+    _evalArg(node) → value
+      Resolve an argument node to a runtime value.
+      Handles: Literal, Identifier, RegRead,
+               TypedValue, TagNode.
+
+    _coerce(type, val) → coerced value
+      num  → Number(val)
+      str  → String(val)
+      bool → Boolean(val)
+      array → Array.isArray(val) ? val : [val]
+      let  → val unchanged
+
+
+============================================================
+23. ZETARUNTIME  (TOP-LEVEL ORCHESTRATOR)
+============================================================
+
+  Class: ZetaRuntime
+
+  The main runtime object. Owns all subsystems.
+
+  Constructor
+    new ZetaRuntime(opts?)
+    opts: { debug: boolean, strict: boolean, unsafe: boolean }
+
+  Subsystem Properties (all public)
+    .registers      ZetaRegisterFile instance
+    .memory         ZetaMemoryManager instance
+    .eventBus       ZetaEventBus instance
+    .portions       ZetaPortionRegistry instance
+    .globalScope    Object — global symbol table
+    .exports        Object — exported symbols
+    .macros         Object — compile-time macros
+    .tags           ZetaTagEngine instance
+    .directives     ZetaDirectiveEngine instance
+    .moduleLoader   ZetaModuleLoader instance
+    .terminal       ZetaTerminal instance
+    .inputManager   ZetaInputManager instance
+    .gui            ZetaGUI | null  (lazy: created on @gui)
+    .engine3d       ZetaEngine3D | null  (lazy: on @engine)
+
+  Flags
+    ._debugMode     Log tokens/AST/IR to console
+    ._strict        Re-throw directive errors
+    ._unsafe        Bypass safety guards
+
+  Methods
+    .execute(src) → any
+      PRIMARY ENTRY POINT for running .zl source code.
+      Pipeline: ZetaLexer → ZetaParser → ZetaIRCompiler
+                → ZetaExecutor
+      Emits: 'runtime:executed'
+
+    .registerBuiltins(names)
+      Register safe builtin names in globalScope.
+      Used by the ZPP bootstrap to whitelist __zeta_* names.
+
+    .registerTypes(names)
+      Register type names as __zltype_<name> in globalScope.
+
+  Internal methods
+    ._bootstrapGlobalScope()
+      Installs all __zeta_* IR helpers and convenience
+      shorthands (zeta, console) into globalScope.
+
+    ._execCall(portion, func, args, tagRef, directive)
+      Low-level call dispatcher used by the IR path.
+
+    ._buildResult(exports) → object
+      Collect exported symbols into a result object.
+
+  Quick-execute helper (module export):
+    execute(src) → _zetaRuntime.execute(src)
+
+  Module loader shorthand (module export):
+    require(name) → _zetaRuntime.moduleLoader.load(name)
+
+
+============================================================
+24. ZETAERROR
+============================================================
+
+  Class: ZetaError extends Error
+
+  All runtime errors thrown by zeta.zl use this class.
+
+  Constructor
+    new ZetaError(msg)
+    Sets this.name = 'ZetaError'
+    Prefixes message with '[zeta.zl] '
+
+  Usage:
+    try { ... } catch (e) {
+      if (e instanceof ZetaError) { ... }
+    }
+
+
+============================================================
+25. BUILT-IN EXAMPLE PROGRAMS
+============================================================
+
+  All examples are stored in the frozen EXAMPLES object
+  and exposed as G.ZETA_EXAMPLES after injection.
+
+  EXAMPLES.HELLO_WORLD
+    Demonstrates: portion, section, register I/O, <io> tag,
+                  @term directive.
+    Defines: .io portion with print function.
+    Calls: .io --->print --> "Hello, World!"
+
+  EXAMPLES.MATH_FUNCTIONS
+    Demonstrates: <calc> tag (add, mul, pow, sqrt, clamp),
+                  multi-slot register usage.
+    Defines: .math portion with add, multiply, hypotenuse,
+             clamp functions.
+
+  EXAMPLES.GUI_WINDOW
+    Demonstrates: @gui directive, <shape> tag, <render> tag,
+                  window creation and drawing.
+    Defines: .ui portion with createMainWindow, drawButton,
+             drawHexagon functions.
+
+  EXAMPLES.SCENE_3D
+    Demonstrates: @engine directive, <mesh> tag,
+                  <physics> tag, scene/light/camera setup,
+                  render loop.
+    Defines: .world portion with initScene, spawnCube,
+             spawnSphere, renderLoop functions.
+
+  EXAMPLES.ASCII_INTEGRATION
+    Demonstrates: @import directive, loading ascii.zl,
+                  <str> tag operations.
+    Defines: .text portion with encodeMessage,
+             caesarCipher, charStats functions.
+
+
+============================================================
+26. MODULE EXPORT REFERENCE
+============================================================
+
+  When used as a Node.js module (require/import):
+
+    const {
+      ZetaRuntime,       // Main runtime class
+      ZetaLexer,         // Tokeniser
+      ZetaParser,        // Recursive-descent parser
+      ZetaIRCompiler,    // AST → IR string
+      ZetaExecutor,      // AST → runtime values
+      ZetaSafeLayer,     // ZPP safety pre-processor
+      ZetaRegisterFile,  // r1..r8 register file
+      ZetaMemoryManager, // Heap allocator
+      ZetaTagEngine,     // <tag> dispatcher
+      ZetaDirectiveEngine, // @directive dispatcher
+      ZetaPortionRegistry, // portion namespace tree
+      ZetaEventBus,      // pub-sub event system
+      ZetaGUI,           // Electron/Canvas GUI
+      ZetaEngine3D,      // 3D scene graph
+      ZetaPhysicsWorld,  // Impulse physics
+      ZetaInputManager,  // Keyboard/mouse/gamepad
+      ZetaModuleLoader,  // .zl library loader
+      ZetaTerminal,      // stdout shim
+      ZetaError,         // Error class
+      EXAMPLES,          // Built-in example programs
+      runtime,           // Singleton ZetaRuntime
+      execute,           // (src) => runtime.execute(src)
+      require,           // (name) => loader.load(name)
+    } = require('zeta_lib.js');
+
+  When used in a browser via <script>:
+    globalThis.ZetaZL  = { runtime, EXAMPLES, ZetaError }
+
+  When injected into DSALibraries (G = ZPP global scope):
+    G.ZetaRuntime, G.ZetaLexer, G.ZetaParser,
+    G.ZetaSafeLayer, G.ZetaIRCompiler, G.ZetaExecutor,
+    G.ZetaGUI, G.ZetaEngine3D, G.ZetaPhysicsWorld,
+    G.ZetaInputManager, G.ZetaModuleLoader,
+    G.ZetaTagEngine, G.ZetaDirectiveEngine,
+    G.ZetaError, G.ZETA_EXAMPLES,
+    G.zeta  (singleton runtime reference)
+    All __zeta_* IR helpers
+
+
+============================================================
+27. QUICK-SYNTAX CHEAT SHEET
+============================================================
+
+  REGISTER OPERATIONS
+  ─────────────────────────────────────────────────────────
+    r1 $-> <num>:42;              // write 42 to r1 slot 0
+    r1 $-> <num>:10, <str>:"hi"; // fill slots 0 and 1
+    %r1                           // read all slots of r1
+    %r1:0                         // read slot 0 of r1
+    free r1;                      // zero r1
+    free r1, r2, r3;              // zero multiple registers
+
+  FUNCTION CALLS
+  ─────────────────────────────────────────────────────────
+    // Call and bind result to <tag>
+    .myPortion --->myFunc --> arg1, arg2 -> <getVal><$r2>;
+
+    // Call with @directive scope
+    @gui --->createWindow --> "Title", 800, 600 -> <render><$r1>;
+
+    // Global call (no portion)
+    --->myGlobalFunc --> %r1:0 -> <cast>;
+
+  CONTROL STRUCTURES
+  ─────────────────────────────────────────────────────────
+    // Inherited from ZPP:
+    if x > 10 { ... } else { ... }
+    for i in 0 to 10 step 2 { ... }
+    for each item in myArray { ... }
+    while cond { ... }
+    match x { on 1 => { ... } else => { ... } }
+
+    // zeta.zl additions (via tags):
+    <flow>  { op:"if", condition:..., then:..., else:... }
+    <loop>  { from:0, to:10, step:2, body: fn(i){...} }
+    <iter>  { items:[...], body: fn(x){...} }
+
+  FULL PROGRAM TEMPLATE
+  ─────────────────────────────────────────────────────────
+    @directive                    // optional block directive
+
+    medium_zeta :-> {
+        @innerDirective           // block-scoped directive
+
+        portion .myPortion
+            section <func>.myFunc -> num, str :->
+                r1 $-> <num>:0, <str>:1;   // load params
+                r2 $-> <calc>add --> %r1:0, 10 -> <getVal><$r2>;
+                free r1
+
+            section <struct>.MyStruct -> num, str :->
+                // struct factory — no body needed
+
+    } -> result([myFunc], [MyStruct]);
+
+  TYPE KEYWORDS  (same as ZPP base language)
+  ─────────────────────────────────────────────────────────
+    num    — number
+    str    — string
+    bool   — boolean
+    array  — array
+    let    — flexible / untyped
+
+============================================================
+                    END OF DOCUMENTATION
+============================================================

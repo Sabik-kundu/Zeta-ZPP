@@ -1,0 +1,1319 @@
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                     threeD.zl  —  OFFICIAL REFERENCE DOCUMENTATION             ║
+║                     Software 3D Renderer Library for ZETA++                    ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
+
+  Version  : td2
+  Language : ZETA++ (ZPP)
+  Author   : DSALibraries / threeD.zl team
+
+  threeD.zl is a pure software 3D rendering library for ZETA++. It gives you
+  meshes, lights, materials, a scene graph, a camera, raycasting, fog, OBJ import,
+  and a real-time render loop — all drawing into a standard 2D canvas. No GPU
+  driver or WebGL context is required.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TABLE OF CONTENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1.  Quick-Start Example
+  2.  Custom Types
+  3.  Forge3D  —  The Render Engine
+  4.  Primitive Geometry Constructors
+  5.  tdMesh  —  Raw Mesh Constructor
+  6.  tdMerge  —  Mesh Combination
+  7.  tdLoadOBJ  —  OBJ File Import
+  8.  Mesh API  —  Transform, Material & Scene-Graph Methods
+  9.  Scene3D  —  Scene Container
+  10. Camera
+  11. Lights
+  12. Material
+  13. Vector Math  (tdVec3 family)
+  14. Matrix Math  (tdMat4 family)
+  15. Raycasting  —  tdRaycast & tdPickObject
+  16. Fog  —  tdFogLinear & tdFogExp
+  17. tdSnapshot  —  Frame Capture
+  18. Rendering Pipeline Notes
+  19. Error Conditions & Edge Cases
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. QUICK-START EXAMPLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  The minimum working program: one spinning cube on a lit dark background.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // 1. Build a scene and add a camera                                        │
+  │  scene3d  sc  = tdScene3D()                                                  │
+  │  cam3d    cam = tdCamera()                                                   │
+  │  cam.tdPlace(0, 2, 6).tdLook(0, 0, 0)                                       │
+  │                                                                              │
+  │  // 2. Create geometry, colour it, add to scene                              │
+  │  mesh3d  box = tdCube(2, 2, 2)                                               │
+  │  box.tdColor("#4fc3f7").tdPlace(0, 0, 0)                                     │
+  │  sc.tdAddMesh(box)                                                           │
+  │                                                                              │
+  │  // 3. Add lighting                                                          │
+  │  light3d  sun = tdDirLight(0.5, -1, -0.5, "#ffffff", 1.2)                   │
+  │  light3d  amb = tdAmbientLight("#224466", 0.4)                               │
+  │  sc.tdAddLight(sun).tdAddLight(amb)                                          │
+  │                                                                              │
+  │  // 4. Create the forge and hook up a tick function                          │
+  │  forge = Forge3D(canvas)                                                     │
+  │  forge.tdTick(fn(dt) {                                                       │
+  │      box.tdSpin(0, box._ry + 45 * dt, 0)                                    │
+  │      forge.tdRender(sc, cam)                                                 │
+  │  })                                                                          │
+  │  forge.tdStart()                                                             │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  After tdStart() the library drives a ~60 fps loop automatically.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2. CUSTOM TYPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  threeD.zl registers five first-class types into the ZPP type system:
+
+  ┌────────────┬────────────────────────────────────────────────────────────────┐
+  │  Type name │  Description                                                   │
+  ├────────────┼────────────────────────────────────────────────────────────────┤
+  │  mesh3d    │  A 3D mesh node — geometry + transform + material + children   │
+  │  scene3d   │  Container for meshes and lights                               │
+  │  cam3d     │  Perspective or orthographic camera                            │
+  │  light3d   │  A point, directional, or ambient light source                 │
+  │  mat3d     │  A standalone material descriptor                              │
+  └────────────┴────────────────────────────────────────────────────────────────┘
+
+  Use these as variable type annotations just like any other ZPP type:
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d   myMesh  = tdSphere(1.0, 24, 16)                                   │
+  │  scene3d  world   = tdScene3D()                                              │
+  │  cam3d    eye     = tdCamera()                                               │
+  │  light3d  lamp    = tdPointLight(0, 4, 0, "#ffeecc", 2.0)                   │
+  │  mat3d    chrome  = tdMaterial("#c0c0c0", { wire: false, smooth: true })     │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3. FORGE3D  —  THE RENDER ENGINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Forge3D is the central rendering object. It owns the render loop, the tick
+  callback, and all calls to the painter. One Forge3D instance manages one canvas.
+
+  CONSTRUCTOR
+  ───────────
+    Forge3D(canvas)
+
+      canvas  — a ZPP canvas object (must expose getCtx() and have .width /
+                .height).  In CLI mode it must also expose _flush() to push
+                each rendered frame to the display.
+
+      Returns a forge object.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  forge = Forge3D(myCanvas)                                                   │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  forge.tdRender(scene3d sc, cam3d cam)
+  ─────────────────────────────────────────────
+    Performs a single immediate render of sc as seen by cam. Use this for
+    static scenes or when you need manual control over when drawing happens.
+    Returns the forge for chaining.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  forge.tdRender(sc, cam)     // draws one frame right now                   │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  forge.tdTick(fn(dt) { ... })
+  ─────────────────────────────────────────────
+    Registers a callback that fires every frame before rendering.
+    dt  — elapsed time in seconds since the previous frame (a float).
+    This is where you update positions, rotations, physics, etc.
+    Returns the forge for chaining.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  float angle = 0.0                                                           │
+  │                                                                              │
+  │  forge.tdTick(fn(dt) {                                                       │
+  │      angle = angle + 90.0 * dt     // 90 degrees per second                 │
+  │      ball.tdSpin(0, angle, 0)                                                │
+  │      forge.tdRender(sc, cam)                                                 │
+  │  })                                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  forge.tdStart()
+  ─────────────────────────────────────────────
+    Starts the render loop. Calls the tick function and redraws the canvas
+    at approximately 60 frames per second. Calling tdStart() while already
+    running has no effect. Returns the forge.
+
+  ─────────────────────────────────────────────
+  forge.tdStop()
+  ─────────────────────────────────────────────
+    Pauses the render loop. The canvas is NOT cleared — whatever was last
+    drawn stays on screen. Call tdStart() again to resume. Returns the forge.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Play / pause example                                                     │
+  │  forge.tdStart()                                                             │
+  │  // ... later, on a button press:                                            │
+  │  forge.tdStop()                                                              │
+  │  // resume:                                                                  │
+  │  forge.tdStart()                                                             │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  NOTE  The loop is driven by requestAnimationFrame in browser environments and
+        by a 16 ms setInterval in CLI environments. You do not choose this — it
+        is selected automatically.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4. PRIMITIVE GEOMETRY CONSTRUCTORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  All primitives return a mesh3d value with a default grey material applied.
+  Every parameter is optional; the defaults are noted below.
+
+  ─────────────────────────────────────────────
+  tdCube(w, h, d)  →  mesh3d
+  ─────────────────────────────────────────────
+    Creates a box centred at the origin.
+
+    w  — width  along X  (default 1)
+    h  — height along Y  (default 1)
+    d  — depth  along Z  (default 1)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  crate = tdCube(2, 1, 1)          // wide flat box                  │
+  │  mesh3d  dice  = tdCube(1, 1, 1)          // unit cube                      │
+  │  mesh3d  tower = tdCube(0.5, 3, 0.5)      // tall thin pillar               │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdSphere(r, segs, rings)  →  mesh3d
+  ─────────────────────────────────────────────
+    UV sphere centred at the origin.
+
+    r      — radius          (default 1)
+    segs   — longitude cuts  (default 16)
+    rings  — latitude cuts   (default 12)
+
+    Higher segs/rings values give a smoother result but cost more triangles.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  ball   = tdSphere(1, 16, 12)     // normal quality                 │
+  │  mesh3d  planet = tdSphere(5, 32, 24)     // high quality, large            │
+  │  mesh3d  lowpoly = tdSphere(1, 6, 4)      // chunky faceted look            │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdPlane(w, h, segW, segH)  →  mesh3d
+  ─────────────────────────────────────────────
+    A flat quad (or subdivided grid) lying in the XZ plane.
+
+    w     — width   (default 1)
+    h     — depth   (default 1)
+    segW  — horizontal subdivisions  (default 1)
+    segH  — vertical   subdivisions  (default 1)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  floor  = tdPlane(20, 20, 1, 1)   // simple ground quad             │
+  │  mesh3d  grid   = tdPlane(10, 10, 10, 10) // 10×10 wireframe grid           │
+  │  grid.tdWire(true)                                                           │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdCylinder(rTop, rBot, h, segs)  →  mesh3d
+  ─────────────────────────────────────────────
+    A capped cylinder. Both end caps are included automatically.
+
+    rTop  — top    radius   (default 0.5)
+    rBot  — bottom radius   (default 0.5)
+    h     — height          (default 1)
+    segs  — side segments   (default 16)
+
+    Setting rTop and rBot to different values produces a truncated cone / frustum.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  pipe    = tdCylinder(0.5, 0.5, 3, 24)   // straight tube           │
+  │  mesh3d  bucket  = tdCylinder(0.8, 0.5, 1, 16)   // wider at top            │
+  │  mesh3d  frustum = tdCylinder(0.3, 0.9, 2, 16)   // wider at bottom         │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdCone(r, h, segs)  →  mesh3d
+  ─────────────────────────────────────────────
+    A closed cone with its tip pointing upward (+Y) and base facing -Y.
+
+    r     — base radius      (default 0.5)
+    h     — height           (default 1)
+    segs  — side segments    (default 16)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  hat  = tdCone(0.5, 1.5, 16)             // witch hat               │
+  │  mesh3d  tip  = tdCone(0.2, 0.6, 8)              // low-poly pointy top     │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdTorus(R, r, segs, tube)  →  mesh3d
+  ─────────────────────────────────────────────
+    A doughnut / ring shape lying in the XZ plane.
+
+    R     — major radius (centre of ring to centre of tube)   (default 0.5)
+    r     — minor radius (tube radius)                        (default 0.2)
+    segs  — segments around the major ring                    (default 24)
+    tube  — segments around the tube cross-section            (default 12)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  donut = tdTorus(1.0, 0.35, 32, 16)      // smooth ring             │
+  │  mesh3d  chain = tdTorus(0.4, 0.1, 16, 8)        // small tight ring        │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5. tdMesh  —  RAW MESH CONSTRUCTOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdMesh(verts, faces)  →  mesh3d
+
+    Build any custom shape from scratch by supplying vertex positions and a
+    face index list.
+
+    verts  — list of 3-element numeric arrays, each [x, y, z]
+    faces  — list of triangle index arrays, each [i0, i1, i2]
+             (quads [i0, i1, i2, i3] are also accepted and triangulated)
+
+  Face normals are computed automatically from the winding order. The default
+  material is grey (#cccccc), smooth shading, fully opaque.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // A simple tetrahedron                                                     │
+  │  verts = [                                                                   │
+  │      [ 0.0,  1.0,  0.0],   // apex                                          │
+  │      [-1.0, -1.0,  1.0],   // front-left base                               │
+  │      [ 1.0, -1.0,  1.0],   // front-right base                              │
+  │      [ 0.0, -1.0, -1.0],   // back base                                     │
+  │  ]                                                                           │
+  │  faces = [                                                                   │
+  │      [0, 1, 2],            // front face                                    │
+  │      [0, 2, 3],            // right face                                    │
+  │      [0, 3, 1],            // left face                                     │
+  │      [1, 3, 2],            // bottom face                                   │
+  │  ]                                                                           │
+  │                                                                              │
+  │  mesh3d  tetra = tdMesh(verts, faces)                                        │
+  │  tetra.tdColor("#e74c3c")                                                    │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  6. tdMerge  —  MESH COMBINATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdMerge(mesh3d a, mesh3d b)  →  mesh3d
+
+    Combines two meshes into a single new mesh. The vertex indices of b are
+    offset automatically so there are no collisions. The resulting mesh inherits
+    the material of a. Neither a nor b is modified.
+
+    Use this to bake together static objects that never move independently,
+    saving draw overhead.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  body  = tdCylinder(0.4, 0.4, 1.8, 16)                              │
+  │  mesh3d  head  = tdSphere(0.4, 16, 12)                                      │
+  │  head.tdPlace(0, 1.4, 0)                                                    │
+  │                                                                              │
+  │  mesh3d  figure = tdMerge(body, head)    // one draw call, one mesh         │
+  │  figure.tdColor("#f0a050")                                                  │
+  │  sc.tdAddMesh(figure)                                                        │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  CAVEAT  Because the two meshes are baked into one, their pre-merge positions are
+          baked into the vertex data. If you want head and body to move together
+          after merging, control the merged mesh as a whole via tdPlace / tdSpin.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7. tdLoadOBJ  —  OBJ FILE IMPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdLoadOBJ(string objText)  →  mesh3d
+
+    Parses an OBJ-format string and returns a mesh3d.
+    Supported OBJ features:
+
+      v   x y z        — vertex positions
+      f   i i i ...    — faces  (triangles and polygons, index notation only)
+                          Slash notation such as  v/vt/vn  is accepted but only
+                          the position index is used; texture and normal indices
+                          are ignored.
+
+    Not supported: mtllib/usemtl material files, groups, object names, normals
+    from the OBJ (they are always recomputed from geometry).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Load OBJ text from a variable (you already have the file contents)       │
+  │  string  objData = readFile("spaceship.obj")   // your ZPP file-read call   │
+  │  mesh3d  ship    = tdLoadOBJ(objData)                                        │
+  │  ship.tdColor("#aaaaaa").tdSmooth(true)                                      │
+  │  ship.tdPlace(0, 0, 0).tdSpin(0, 45, 0)                                     │
+  │  sc.tdAddMesh(ship)                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. MESH API  —  TRANSFORM, MATERIAL & SCENE-GRAPH METHODS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Every mesh3d value exposes the following methods. All methods return the mesh
+  itself so calls can be chained freely.
+
+  ╔══════════════════════════╗
+  ║  TRANSFORM               ║
+  ╚══════════════════════════╝
+
+  ─────────────────────────────────────────────
+  .tdPlace(x, y, z)
+  ─────────────────────────────────────────────
+    Sets the world-space position of the mesh. All three axes are set at once.
+    Defaults: 0, 0, 0.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  box.tdPlace(3, 0.5, -2)    // move to x=3, y=0.5, z=-2                    │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdSpin(rx, ry, rz)
+  ─────────────────────────────────────────────
+    Sets the Euler rotation angles in degrees. Applied in Y → X → Z order.
+    Defaults: 0, 0, 0.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  box.tdSpin(0, 45, 0)       // 45° around Y (yaw)                           │
+  │  box.tdSpin(30, 0, 0)       // 30° tilt forward around X (pitch)            │
+  │  box.tdSpin(0, 0, 15)       // 15° lean sideways around Z (roll)            │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdGrow(sx, sy, sz)
+  ─────────────────────────────────────────────
+    Sets the non-uniform scale. If only sx is supplied, uniform scaling is
+    applied on all three axes. Defaults: 1, 1, 1.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  box.tdGrow(2, 1, 2)        // double width and depth, normal height        │
+  │  box.tdGrow(0.5)            // half size on all axes (uniform)              │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ╔══════════════════════════╗
+  ║  MATERIAL                ║
+  ╚══════════════════════════╝
+
+  ─────────────────────────────────────────────
+  .tdColor(string hex)
+  ─────────────────────────────────────────────
+    Sets the base diffuse colour of the mesh. Accepts any CSS colour string:
+    named colours ("red", "skyblue"), #RGB, #RRGGBB, rgb(), hsl(), etc.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  box.tdColor("#e74c3c")     // flat red                                     │
+  │  sphere.tdColor("dodgerblue")                                                │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdFace(string hex)
+  ─────────────────────────────────────────────
+    Overrides the lit face fill colour independently of the base colour.
+    Useful when you want a specific unlit face tone regardless of lighting.
+
+  ─────────────────────────────────────────────
+  .tdEdge(string hex)
+  ─────────────────────────────────────────────
+    Adds visible edge lines in the given colour on top of solid shading.
+    When combined with tdWire(false) you get a filled + outlined look.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  box.tdColor("#2ecc71").tdEdge("#000000")  // green faces, black outlines   │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdWire(bool b)
+  ─────────────────────────────────────────────
+    True  → draw only edges (wireframe). The face fill is skipped.
+    False → solid shading (default).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  box.tdWire(true)           // wireframe mode on                             │
+  │  box.tdWire(false)          // back to solid                                 │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdSmooth(bool b)
+  ─────────────────────────────────────────────
+    True (default) → smooth normals are blended, giving a rounded appearance.
+    False → flat shading, one colour per face (faceted look).
+
+  ─────────────────────────────────────────────
+  .tdFlat()
+  ─────────────────────────────────────────────
+    Shorthand for .tdSmooth(false). Switches to flat / faceted shading.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Low-poly aesthetic                                                       │
+  │  mesh3d  gem = tdSphere(1, 6, 4)                                             │
+  │  gem.tdFlat().tdColor("#9b59b6")                                             │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdOpacity(float a)
+  ─────────────────────────────────────────────
+    Sets the alpha transparency. Range: 0.0 (invisible) to 1.0 (fully opaque).
+    Semi-transparent meshes are still sorted and drawn correctly via the
+    painter's algorithm.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  ghost.tdOpacity(0.35)      // 35 % visible ghost mesh                      │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdUVScale(float s)
+  ─────────────────────────────────────────────
+    Sets a UV texture scale multiplier stored in the material. Affects how
+    texture coordinates are interpreted when a textured rendering path is used.
+    Default: 1.
+
+  ╔══════════════════════════╗
+  ║  SHADOW FLAGS            ║
+  ╚══════════════════════════╝
+
+  ─────────────────────────────────────────────
+  .tdCastShadow(bool b)
+  ─────────────────────────────────────────────
+    Marks whether this mesh casts a shadow onto other surfaces.
+    Default: false.
+
+  ─────────────────────────────────────────────
+  .tdReceiveShadow(bool b)
+  ─────────────────────────────────────────────
+    Marks whether other meshes' shadows should land on this surface.
+    Default: false.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  floor.tdReceiveShadow(true)                                                 │
+  │  tree.tdCastShadow(true)                                                     │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ╔══════════════════════════╗
+  ║  VISIBILITY & TAGGING    ║
+  ╚══════════════════════════╝
+
+  ─────────────────────────────────────────────
+  .tdVisible(bool b)
+  ─────────────────────────────────────────────
+    True (default) → mesh is drawn.
+    False → mesh is hidden. It stays in the scene but is not rendered or
+            tested for raycasts.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  explosion.tdVisible(false)    // hide the explosion mesh initially          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdTag(string name)
+  ─────────────────────────────────────────────
+    Assigns a string label to this mesh. Tags are used by tdGetMesh and
+    tdFindByTag on the scene to look up objects by name rather than reference.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  enemy.tdTag("boss")                                                         │
+  │  // ... later:                                                               │
+  │  mesh3d  found = sc.tdGetMesh("boss")                                        │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ╔══════════════════════════╗
+  ║  SCENE GRAPH             ║
+  ╚══════════════════════════╝
+
+  ─────────────────────────────────────────────
+  .tdAttach(mesh3d child)
+  ─────────────────────────────────────────────
+    Adds child as a child node of this mesh in the scene graph. The child is
+    rendered together with the parent as part of one draw batch.
+
+  ─────────────────────────────────────────────
+  .tdDetach(mesh3d child)
+  ─────────────────────────────────────────────
+    Removes child from this mesh's children list.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  body   = tdCylinder(0.3, 0.3, 1.0, 12)                             │
+  │  mesh3d  turret = tdCube(0.4, 0.2, 0.4)                                     │
+  │  turret.tdPlace(0, 0.65, 0)                                                  │
+  │                                                                              │
+  │  body.tdAttach(turret)      // turret is now part of body's subtree          │
+  │  sc.tdAddMesh(body)         // adding body also renders turret               │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdClone()  →  mesh3d
+  ─────────────────────────────────────────────
+    Returns a deep copy of this mesh: all vertices, face indices, normals,
+    current transform values, and material settings are duplicated. The clone
+    is independent — modifying it does not affect the original.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  template = tdSphere(0.5, 12, 8).tdColor("#f39c12")                 │
+  │                                                                              │
+  │  int i = 0                                                                   │
+  │  while i < 5 {                                                               │
+  │      mesh3d  coin = template.tdClone()                                       │
+  │      coin.tdPlace(i * 1.5 - 3, 0, 0)                                        │
+  │      sc.tdAddMesh(coin)                                                      │
+  │      i = i + 1                                                               │
+  │  }                                                                           │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ╔══════════════════════════╗
+  ║  GEOMETRY UTILITIES      ║
+  ╚══════════════════════════╝
+
+  ─────────────────────────────────────────────
+  .tdGetBounds()  →  { min, max, center }
+  ─────────────────────────────────────────────
+    Returns the world-space axis-aligned bounding box of the mesh after
+    its current transform is applied.
+
+    Returns an object with three vec3 fields:
+      min     — corner with smallest x, y, z
+      max     — corner with largest  x, y, z
+      center  — midpoint of the bounding box
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mesh3d  rock = tdSphere(1.5, 10, 8)                                         │
+  │  rock.tdPlace(2, 0, -3)                                                      │
+  │                                                                              │
+  │  bounds = rock.tdGetBounds()                                                 │
+  │  print(bounds.center)       // prints something like {x:2, y:0, z:-3}       │
+  │  print(bounds.max.y)        // top of the rock in world space                │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdFlipNormals()
+  ─────────────────────────────────────────────
+    Reverses every face normal and flips the winding order of all faces.
+    Use this when a mesh renders inside-out — visible from the inside rather
+    than the outside — or to create concave enclosures.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // A room: a cube seen from the inside                                      │
+  │  mesh3d  room = tdCube(10, 4, 10)                                            │
+  │  room.tdFlipNormals().tdColor("#ccbbaa")                                     │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  9. SCENE3D  —  SCENE CONTAINER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdScene3D()  →  scene3d
+
+    Creates an empty scene. The scene holds the mesh list, the light list,
+    the background colour, and fog settings. All scene methods return the
+    scene for chaining.
+
+  ─────────────────────────────────────────────
+  .tdAddMesh(mesh3d m)
+  ─────────────────────────────────────────────
+    Appends m to the scene's mesh list. Meshes are drawn in insertion order
+    (before depth-sorting). Returns the scene.
+
+  ─────────────────────────────────────────────
+  .tdRemoveMesh(mesh3d m)
+  ─────────────────────────────────────────────
+    Removes m from the scene by reference. Does nothing if m is not present.
+    Returns the scene.
+
+  ─────────────────────────────────────────────
+  .tdGetMesh(string tag)  →  mesh3d | null
+  ─────────────────────────────────────────────
+    Returns the first mesh whose tag matches exactly, or null if none is found.
+
+  ─────────────────────────────────────────────
+  .tdFindByTag(string tag)  →  list of mesh3d
+  ─────────────────────────────────────────────
+    Returns all meshes whose tag matches. Use this when multiple meshes share
+    the same tag (e.g. all "enemy" objects).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  int e = 0                                                                   │
+  │  while e < 3 {                                                               │
+  │      mesh3d  enemy = tdCube(0.5, 1, 0.5)                                    │
+  │      enemy.tdTag("enemy").tdColor("#e74c3c").tdPlace(e * 2 - 2, 0, 0)       │
+  │      sc.tdAddMesh(enemy)                                                     │
+  │      e = e + 1                                                               │
+  │  }                                                                           │
+  │                                                                              │
+  │  // find all enemies and make them invisible:                                │
+  │  enemies = sc.tdFindByTag("enemy")                                           │
+  │  // iterate and hide...                                                      │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdClearScene()
+  ─────────────────────────────────────────────
+    Removes every mesh AND every light from the scene. Useful for level
+    transitions or full scene resets. Returns the scene.
+
+  ─────────────────────────────────────────────
+  .tdAddLight(light3d l)
+  ─────────────────────────────────────────────
+    Adds l to the scene's lighting list. Returns the scene.
+
+  ─────────────────────────────────────────────
+  .tdRemoveLight(light3d l)
+  ─────────────────────────────────────────────
+    Removes l from the lighting list by reference. Returns the scene.
+
+  ─────────────────────────────────────────────
+  .tdBackground3D(string color)
+  ─────────────────────────────────────────────
+    Sets the background fill colour drawn before any geometry.
+    Default: "#0a0a0f" (very dark navy).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  sc.tdBackground3D("#87ceeb")   // sky blue                                 │
+  │  sc.tdBackground3D("#000000")   // deep black void                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdFog(string mode, string color, float a, float b)
+  ─────────────────────────────────────────────
+    Enables scene-wide fog. mode is either "linear" or "exp".
+
+    For "linear" fog:   a = near distance,  b = far distance.
+    For "exp"    fog:   a = density,        b is unused.
+
+    See Section 16 for the tdFogLinear / tdFogExp standalone constructors.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  sc.tdFog("linear", "#aabbcc", 10, 60)   // light blue mist                 │
+  │  sc.tdFog("exp",    "#101010", 0.08, 0)  // exponential dark haze           │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  10. CAMERA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdCamera()  →  cam3d
+
+    Creates a default perspective camera positioned at (0, 0, 5), looking
+    toward the origin, with a 60° field of view, near plane 0.1, far plane 1000.
+
+    All camera methods return the camera for chaining.
+
+  ─────────────────────────────────────────────
+  .tdPlace(x, y, z)
+  ─────────────────────────────────────────────
+    Moves the camera to world position (x, y, z) without changing its target.
+
+  ─────────────────────────────────────────────
+  .tdLook(tx, ty, tz)
+  ─────────────────────────────────────────────
+    Points the camera at world target (tx, ty, tz).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  cam.tdPlace(0, 5, 10).tdLook(0, 0, 0)   // above and behind origin         │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdFov(float degrees)
+  ─────────────────────────────────────────────
+    Sets the vertical field of view in degrees. Larger = wider / fisheye.
+    Default: 60.
+
+  ─────────────────────────────────────────────
+  .tdNear(float n)
+  ─────────────────────────────────────────────
+    Sets the near clipping plane distance. Geometry closer than n is clipped.
+    Default: 0.1.  Keep this as large as practical to avoid z-fighting.
+
+  ─────────────────────────────────────────────
+  .tdFar(float f)
+  ─────────────────────────────────────────────
+    Sets the far clipping plane distance. Geometry beyond f is clipped.
+    Default: 1000.
+
+  ─────────────────────────────────────────────
+  .tdOrtho(float size)
+  ─────────────────────────────────────────────
+    Switches to orthographic projection. size controls the half-extent of the
+    view volume. Useful for isometric or 2D-style views.
+
+  ─────────────────────────────────────────────
+  .tdPersp()
+  ─────────────────────────────────────────────
+    Switches back to perspective projection (the default).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  cam.tdOrtho(8)         // orthographic, 8-unit half-extent                 │
+  │  cam.tdPersp()          // switch back to perspective                        │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdAim(float dx, float dy)
+  ─────────────────────────────────────────────
+    Rotates the camera's look direction by dx degrees horizontally (yaw) and
+    dy degrees vertically (pitch). The camera position stays fixed; only the
+    target point moves. Pitch is clamped to ±89° to prevent gimbal flip.
+    Typical use: first-person mouselook.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // First-person mouselook — call in the tick function                       │
+  │  forge.tdTick(fn(dt) {                                                       │
+  │      cam.tdAim(mouseDeltaX * 0.2, mouseDeltaY * 0.2)                        │
+  │      forge.tdRender(sc, cam)                                                 │
+  │  })                                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdOrbit(float dx, float dy, float dist)
+  ─────────────────────────────────────────────
+    Rotates the camera around its look-at target while keeping the target
+    fixed. dx is horizontal orbit delta (degrees), dy is vertical (clamped
+    ±89°). dist is the orbit radius; if 0 or omitted the current distance
+    between camera and target is used. Typical use: object inspector / turntable.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Turntable orbit — accumulate angle over time                             │
+  │  float yaw = 0.0                                                             │
+  │                                                                              │
+  │  forge.tdTick(fn(dt) {                                                       │
+  │      yaw = yaw + 30 * dt        // 30 degrees per second                    │
+  │      cam.tdOrbit(yaw, 20, 6)    // orbit at 20° pitch, 6 units out          │
+  │      forge.tdRender(sc, cam)                                                 │
+  │  })                                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  .tdPan(float dx, float dy)
+  ─────────────────────────────────────────────
+    Slides the camera (and its target) sideways by dx and up/down by dy in
+    camera-local space. The look direction is preserved. Useful for panning
+    a level editor view.
+
+  ─────────────────────────────────────────────
+  .tdTilt(float deg)
+  ─────────────────────────────────────────────
+    Pitches the camera up or down by deg degrees around its local X axis.
+    The camera position is fixed; the target moves.
+
+  ─────────────────────────────────────────────
+  .tdRoll(float deg)
+  ─────────────────────────────────────────────
+    Rotates the camera's up vector by deg degrees around the look direction.
+    Produces a "Dutch angle" or horizon tilt effect.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  cam.tdRoll(15)     // lean the horizon 15 degrees for a cinematic tilt     │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  11. LIGHTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  There are three light constructors. All return a light3d value.
+
+  ─────────────────────────────────────────────
+  tdPointLight(x, y, z, color, intensity)  →  light3d
+  ─────────────────────────────────────────────
+    A point light that shines outward from a world-space position. Attenuation
+    follows a quadratic falloff automatically.
+
+    x, y, z    — world position       (defaults: 0, 5, 0)
+    color      — CSS colour string     (default: "#ffffff")
+    intensity  — brightness multiplier (default: 1)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  light3d  lamp = tdPointLight(0, 3, 0, "#ffeeaa", 1.5)                      │
+  │  sc.tdAddLight(lamp)                                                         │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdDirLight(dx, dy, dz, color, intensity)  →  light3d
+  ─────────────────────────────────────────────
+    A directional (parallel / "sun") light. The position parameters define the
+    light direction vector (not a world position). Light travels in the direction
+    (dx, dy, dz) → origin.
+
+    dx, dy, dz — direction vector      (defaults: 0, -1, 0)
+    color      — CSS colour string     (default: "#ffffff")
+    intensity  — brightness multiplier (default: 1)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  light3d  sun = tdDirLight(0.3, -1, -0.5, "#fff8dc", 1.0)   // warm sun    │
+  │  sc.tdAddLight(sun)                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdAmbientLight(color, intensity)  →  light3d
+  ─────────────────────────────────────────────
+    A uniform global fill light. Every face receives the same contribution
+    regardless of orientation. Use as a base fill to avoid pitch-black shadows.
+
+    color      — CSS colour string     (default: "#ffffff")
+    intensity  — brightness multiplier (default: 1)
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  light3d  sky = tdAmbientLight("#334466", 0.3)    // cool dark fill         │
+  │  sc.tdAddLight(sky)                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  NOTE  If a scene has no lights at all, surfaces are rendered at 85% brightness
+        with no shading variation. Add at least an ambient light to engage proper
+        lighting.
+
+  ─────────────────────────────────────────────
+  LIGHT METHODS  (on any light3d value)
+  ─────────────────────────────────────────────
+    All light methods return the light for chaining.
+
+    .tdPlace(x, y, z)          — Moves a point light to the given position.
+                                  For directional lights this resets the direction.
+
+    .tdAim(dx, dy, dz)         — Sets the direction vector of a directional light.
+
+    .tdColor(string hex)       — Changes the light colour at runtime.
+
+    .tdBright(float v)         — Sets the intensity multiplier.
+
+    .tdOn()                    — Enables the light (default state).
+
+    .tdOff()                   — Disables the light without removing it from
+                                  the scene. Re-enable with .tdOn().
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Flickering torch effect                                                  │
+  │  light3d  torch = tdPointLight(0, 2, 0, "#ff8844", 1.0)                     │
+  │  sc.tdAddLight(torch)                                                        │
+  │                                                                              │
+  │  float t = 0.0                                                               │
+  │  forge.tdTick(fn(dt) {                                                       │
+  │      t = t + dt                                                              │
+  │      float flicker = 0.9 + 0.2 * sin(t * 15.0)                              │
+  │      torch.tdBright(flicker)                                                 │
+  │      forge.tdRender(sc, cam)                                                 │
+  │  })                                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  12. MATERIAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdMaterial(string color, opts)  →  mat3d
+
+    Creates a standalone material descriptor. The opts argument is an optional
+    map with any of the following keys:
+
+    ┌─────────────┬───────────┬──────────────────────────────────────────────────┐
+    │  Key        │  Default  │  Meaning                                         │
+    ├─────────────┼───────────┼──────────────────────────────────────────────────┤
+    │  wire       │  false    │  wireframe-only draw                             │
+    │  smooth     │  true     │  smooth vs flat shading                          │
+    │  opacity    │  1        │  0.0 – 1.0 transparency                         │
+    │  edgeColor  │  null     │  outline colour on top of fill                  │
+    │  uvScale    │  1        │  UV repeat multiplier                            │
+    └─────────────┴───────────┴──────────────────────────────────────────────────┘
+
+    A mat3d value on its own is a pure data structure — apply it to a mesh by
+    assigning it or reading from it in your own logic. Meshes have their own
+    inline material built in via the .tdColor / .tdWire / etc. methods.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  mat3d  steel = tdMaterial("#8899aa", {                                      │
+  │      smooth:    true,                                                        │
+  │      opacity:   1.0,                                                         │
+  │      edgeColor: "#445566",                                                   │
+  │  })                                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  13. VECTOR MATH  (tdVec3 family)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  threeD.zl provides a complete set of 3D vector operations. All return a new
+  vec3 object {x, y, z} and never mutate their inputs.
+
+  ─────────────────────────────────────────────
+  tdVec3(x, y, z)  →  vec3
+  ─────────────────────────────────────────────
+    Constructs a vec3 from three floats. Missing components default to 0.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  pos = tdVec3(1, 2, 3)                                                       │
+  │  up  = tdVec3(0, 1, 0)                                                       │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ─────────────────────────────────────────────
+  tdVec3Add(a, b)  →  vec3
+  ─────────────────────────────────────────────
+    Returns a + b component-wise.
+
+  ─────────────────────────────────────────────
+  tdVec3Sub(a, b)  →  vec3
+  ─────────────────────────────────────────────
+    Returns a − b component-wise.
+
+  ─────────────────────────────────────────────
+  tdVec3Scale(a, float s)  →  vec3
+  ─────────────────────────────────────────────
+    Returns a scaled by scalar s.
+
+  ─────────────────────────────────────────────
+  tdVec3Dot(a, b)  →  float
+  ─────────────────────────────────────────────
+    Returns the scalar dot product a · b.
+
+  ─────────────────────────────────────────────
+  tdVec3Cross(a, b)  →  vec3
+  ─────────────────────────────────────────────
+    Returns the cross product a × b (a new vector perpendicular to both).
+
+  ─────────────────────────────────────────────
+  tdVec3Len(a)  →  float
+  ─────────────────────────────────────────────
+    Returns the Euclidean length of a: sqrt(x²+y²+z²).
+
+  ─────────────────────────────────────────────
+  tdVec3Norm(a)  →  vec3
+  ─────────────────────────────────────────────
+    Returns a unit vector in the direction of a. Safe: if len ≈ 0, returns
+    near-zero rather than NaN.
+
+  ─────────────────────────────────────────────
+  tdVec3Lerp(a, b, float t)  →  vec3
+  ─────────────────────────────────────────────
+    Linearly interpolates between a and b by factor t.
+    t = 0 → returns a,  t = 1 → returns b,  t = 0.5 → midpoint.
+
+  ─────────────────────────────────────────────
+  tdVec3Reflect(v, n)  →  vec3
+  ─────────────────────────────────────────────
+    Reflects vector v across surface normal n (both should be normalised).
+    Formula:  r = v − 2(v·n)n
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Move a mesh towards a target at constant speed                           │
+  │  target = tdVec3(5, 0, -3)                                                   │
+  │  pos    = tdVec3(box._px, box._py, box._pz)                                  │
+  │                                                                              │
+  │  dir   = tdVec3Norm(tdVec3Sub(target, pos))                                 │
+  │  speed = 2.0                                                                 │
+  │  newPos = tdVec3Add(pos, tdVec3Scale(dir, speed * dt))                      │
+  │                                                                              │
+  │  box.tdPlace(newPos.x, newPos.y, newPos.z)                                   │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Smooth camera follow using lerp                                          │
+  │  camPos = tdVec3(cam._pos.x, cam._pos.y, cam._pos.z)                        │
+  │  ideal  = tdVec3Add(tdVec3(player._px, player._py, player._pz),              │
+  │                     tdVec3(0, 3, 8))                                         │
+  │  smooth = tdVec3Lerp(camPos, ideal, 5.0 * dt)                               │
+  │  cam.tdPlace(smooth.x, smooth.y, smooth.z)                                   │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  14. MATRIX MATH  (tdMat4 family)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  4×4 matrices are flat 16-element numeric arrays stored in column-major order.
+  These functions let you build and combine transform matrices manually, or apply
+  them to vec3 values for custom math outside the render pipeline.
+
+  ─────────────────────────────────────────────
+  tdMat4Identity()  →  mat4
+  ─────────────────────────────────────────────
+    Returns the 4×4 identity matrix.
+
+  ─────────────────────────────────────────────
+  tdMat4Mul(mat4 a, mat4 b)  →  mat4
+  ─────────────────────────────────────────────
+    Returns the matrix product a × b.
+
+  ─────────────────────────────────────────────
+  tdMat4TranslateM(tx, ty, tz)  →  mat4
+  ─────────────────────────────────────────────
+    Returns a translation matrix that moves by (tx, ty, tz).
+
+  ─────────────────────────────────────────────
+  tdMat4RotX(float deg)  →  mat4
+  tdMat4RotY(float deg)  →  mat4
+  tdMat4RotZ(float deg)  →  mat4
+  ─────────────────────────────────────────────
+    Returns rotation matrices around each world axis. Angle is in degrees.
+
+  ─────────────────────────────────────────────
+  tdMat4ScaleM(sx, sy, sz)  →  mat4
+  ─────────────────────────────────────────────
+    Returns a scale matrix.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Build a custom transform: translate then rotate 45° Y then scale up     │
+  │  m = tdMat4Identity()                                                        │
+  │  m = tdMat4Mul(tdMat4TranslateM(2, 0, -1), m)                               │
+  │  m = tdMat4Mul(tdMat4RotY(45), m)                                            │
+  │  m = tdMat4Mul(tdMat4ScaleM(1.5, 1.5, 1.5), m)                              │
+  │                                                                              │
+  │  // The mesh's internal world matrix is automatically managed via            │
+  │  // tdPlace / tdSpin / tdGrow — manual matrices are for advanced custom use  │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  15. RAYCASTING  —  tdRaycast & tdPickObject
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Raycasting projects a ray from a 2D screen coordinate into 3D space and tests
+  it against all visible meshes using Möller–Trumbore triangle intersection.
+
+  ─────────────────────────────────────────────
+  tdRaycast(screenX, screenY, canvas, cam3d, scene3d)  →  hit | null
+  ─────────────────────────────────────────────
+    Fires a ray from the camera through the screen pixel (screenX, screenY) and
+    tests it against every visible mesh in the scene. Returns a hit record for
+    the closest intersection:
+
+      hit.mesh        — the mesh3d that was hit
+      hit.faceIndex   — which triangle index was intersected
+      hit.distance    — distance from the camera to the hit point
+      hit.point       — vec3 world-space hit position
+
+    Returns null if nothing was hit.
+
+  ─────────────────────────────────────────────
+  tdPickObject(screenX, screenY, canvas, cam3d, scene3d)  →  mesh3d | null
+  ─────────────────────────────────────────────
+    Shorthand for tdRaycast that returns only the hit mesh (or null). Use this
+    when you need to know what was clicked but not where exactly.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Click to select an object                                                │
+  │  onMouseClick(fn(mouseX, mouseY) {                                           │
+  │      mesh3d  picked = tdPickObject(mouseX, mouseY, canvas, cam, sc)          │
+  │      if picked != null {                                                     │
+  │          picked.tdColor("#ffff00")     // highlight selected object          │
+  │      }                                                                       │
+  │  })                                                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Place a marker at the exact hit point                                    │
+  │  hit = tdRaycast(mouseX, mouseY, canvas, cam, sc)                            │
+  │  if hit != null {                                                            │
+  │      marker.tdPlace(hit.point.x, hit.point.y, hit.point.z)                  │
+  │      marker.tdVisible(true)                                                  │
+  │  }                                                                           │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+  NOTE  Hidden meshes (tdVisible(false)) are skipped during raycasting.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  16. FOG  —  tdFogLinear & tdFogExp
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Fog blends distant faces toward a solid colour, creating depth haze. Fog is
+  applied per-triangle at the average clip-space depth.
+
+  ─────────────────────────────────────────────
+  tdFogLinear(float near, float far, string color)  →  fogDescriptor
+  ─────────────────────────────────────────────
+    Linear fog: no fog at near, fully fogged at far.
+
+    near   — depth at which fog begins (clip space depth value)
+    far    — depth at which geometry is completely hidden in fog
+    color  — fog colour (default "#000000")
+
+  ─────────────────────────────────────────────
+  tdFogExp(float density, string color)  →  fogDescriptor
+  ─────────────────────────────────────────────
+    Exponential squared fog: thickens rapidly with depth.
+
+    density — controls how quickly fog builds up (0.01 = thin, 0.2 = thick)
+    color   — fog colour (default "#000000")
+
+  These two functions return fog descriptor objects; you can also apply fog
+  directly via the scene's .tdFog() method (see Section 9).
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Daylight haze                                                            │
+  │  sc.tdBackground3D("#c8daf0")                                                │
+  │  fogDesc = tdFogLinear(5, 40, "#c8daf0")                                     │
+  │  // apply the descriptor's values to the scene manually, or:                 │
+  │  sc.tdFog("linear", "#c8daf0", 5, 40)                                        │
+  │                                                                              │
+  │  // Night fog with exponential falloff                                       │
+  │  sc.tdBackground3D("#050510")                                                │
+  │  sc.tdFog("exp", "#050510", 0.07, 0)                                         │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  17. tdSnapshot  —  FRAME CAPTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  tdSnapshot(canvas)  →  string
+
+    Returns a PNG data-URL string representing the current pixel contents of the
+    canvas. Works in both browser and CLI environments.
+
+    If the canvas has no renderable content yet (before the first tdRender call),
+    the result is a blank PNG or an empty string.
+
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │  // Render a single frame and capture it                                     │
+  │  forge.tdRender(sc, cam)                                                     │
+  │  string  png = tdSnapshot(canvas)                                            │
+  │                                                                              │
+  │  // In a browser context you could download it:                              │
+  │  saveDataURL(png, "screenshot.png")                                          │
+  └──────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  18. RENDERING PIPELINE NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Understanding the rendering path helps you get the best results.
+
+  PAINTER'S ALGORITHM
+    Faces are sorted back-to-front by their average clip-space depth and drawn
+    from furthest to nearest. This ensures correct visual overlap at no memory
+    cost, but it means overlapping coplanar faces may flicker. Avoid placing
+    two meshes at exactly the same Z position.
+
+  BACK-FACE CULLING
+    Any triangle whose screen-space winding order is clockwise is automatically
+    skipped. This means the back faces of closed meshes are never drawn.
+    Use tdFlipNormals() if a mesh renders inside-out.
+
+  CLIPPING
+    Only faces whose three projected vertices all fall within the [-1, 1] depth
+    range are rendered. Very large or very close geometry may clip unexpectedly —
+    adjust tdNear and tdFar on the camera.
+
+  LIGHTING  (per-face, flat)
+    Lighting is computed once per face using:
+      •  Ambient   — uniform additive term
+      •  Directional — Lambert (N·L) with the face's world-space normal
+      •  Point      — Lambert + quadratic attenuation  1 / (1 + 0.1d + 0.01d²)
+    Multiple lights are additively blended. The final colour is then fog-mixed.
+
+  FOG MIXING
+    Fog blends the lit face colour toward the fog colour based on depth.
+    Linear fog factor: clamp((fogFar − depth) / (fogFar − fogNear), 0, 1)
+    Exponential factor: exp(−density² × depth²)
+
+  COLOUR PARSING
+    Any CSS colour string accepted by a 2D canvas context works as a colour
+    argument. Named colours, hex (#rgb, #rrggbb), rgb(), hsl() are all fine.
+    Parsed values are cached — there is no repeated parsing overhead.
+
+  WORLD MATRIX REBUILD
+    Each mesh's world transform matrix is rebuilt lazily: only when the mesh is
+    marked dirty (position, rotation, or scale changed). In a tight loop, set
+    tdPlace / tdSpin once per frame and let the cache do the rest.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  19. ERROR CONDITIONS & EDGE CASES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌─────────────────────────────────────────┬──────────────────────────────────────┐
+  │  Situation                              │  Outcome                             │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdRender called before tdStart         │  Renders one static frame; safe      │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdStart called twice                   │  Second call is silently ignored      │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  No lights in scene                     │  All faces drawn at 85 % brightness  │
+  │                                         │  with no shading variation           │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdSphere / tdTorus with segs < 3       │  Degenerate geometry; undefined look │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdMesh with fewer than 3 verts         │  No faces rendered; no crash         │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdLoadOBJ with no f-lines             │  Empty mesh; zero vertices           │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdGrow(0)                              │  Degenerate (invisible) mesh         │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdOpacity(0)                           │  Mesh still raycasted, just invisible│
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdVec3Norm on a zero vector            │  Returns near-zero vector; no NaN    │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  Camera placed at its own target        │  Undefined forward direction; black   │
+  │                                         │  frame or degenerate view            │
+  ├─────────────────────────────────────────┼──────────────────────────────────────┤
+  │  tdSnapshot before any render           │  Empty or blank PNG data-URL         │
+  └─────────────────────────────────────────┴──────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FULL FUNCTION INDEX  (alphabetical)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Forge3D(canvas)                         → forge       §3
+  tdAmbientLight(color, intensity)        → light3d     §11
+  tdCamera()                              → cam3d       §10
+  tdCone(r, h, segs)                      → mesh3d      §4
+  tdCube(w, h, d)                         → mesh3d      §4
+  tdCylinder(rTop, rBot, h, segs)         → mesh3d      §4
+  tdDirLight(dx, dy, dz, color, i)        → light3d     §11
+  tdFogExp(density, color)                → fogDesc     §16
+  tdFogLinear(near, far, color)           → fogDesc     §16
+  tdLoadOBJ(text)                         → mesh3d      §7
+  tdMat4Identity()                        → mat4        §14
+  tdMat4Mul(a, b)                         → mat4        §14
+  tdMat4RotX/Y/Z(deg)                     → mat4        §14
+  tdMat4ScaleM(sx, sy, sz)               → mat4        §14
+  tdMat4TranslateM(tx, ty, tz)            → mat4        §14
+  tdMaterial(color, opts)                 → mat3d       §12
+  tdMerge(a, b)                           → mesh3d      §6
+  tdMesh(verts, faces)                    → mesh3d      §5
+  tdPickObject(sx, sy, cvs, cam, sc)      → mesh3d|null §15
+  tdPlane(w, h, segW, segH)               → mesh3d      §4
+  tdPointLight(x, y, z, color, i)         → light3d     §11
+  tdRaycast(sx, sy, cvs, cam, sc)         → hit|null    §15
+  tdScene3D()                             → scene3d     §9
+  tdSnapshot(canvas)                      → string      §17
+  tdSphere(r, segs, rings)                → mesh3d      §4
+  tdTorus(R, r, segs, tube)               → mesh3d      §4
+  tdVec3(x, y, z)                         → vec3        §13
+  tdVec3Add(a, b)                         → vec3        §13
+  tdVec3Cross(a, b)                       → vec3        §13
+  tdVec3Dot(a, b)                         → float       §13
+  tdVec3Len(a)                            → float       §13
+  tdVec3Lerp(a, b, t)                     → vec3        §13
+  tdVec3Norm(a)                           → vec3        §13
+  tdVec3Reflect(v, n)                     → vec3        §13
+  tdVec3Scale(a, s)                       → vec3        §13
+  tdVec3Sub(a, b)                         → vec3        §13
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  END OF DOCUMENT  —  threeD.zl Reference  (td2)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,1510 @@
+================================================================================
+  ZETA++ (ZPP) — COMPLETE LANGUAGE REFERENCE  v9.0
+  "A custom interpreted language with rich types, libraries, and JS interop"
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+  1.  Introduction
+  2.  Running ZPP
+  3.  Comments
+  4.  Variables & Data Types
+      4.1  Basic Types
+      4.2  Extended Types (float, byte, char, bignum)
+      4.3  Constants (const, const const)
+      4.4  Type Aliases — renameDatatype()
+  5.  String Interpolation
+  6.  Operators
+  7.  Control Flow
+      7.1  if / else
+      7.2  for ... in ... to
+      7.3  for each
+      7.4  while
+      7.5  repeat ... until
+      7.6  break / continue
+  8.  Functions
+      8.1  Defining Functions
+      8.2  Anonymous Functions (fn / lambdas)
+      8.3  Default Parameters
+      8.4  Variadic Parameters
+      8.5  Exporting Functions
+  9.  Structs
+  10. Enums
+  11. Pattern Matching (match)
+  12. Error Handling (attempt / rescue / raise)
+  13. Arrays
+      13.1  Array Declaration
+      13.2  Array Shorthand
+      13.3  Typed Array Init
+      13.4  Array Methods
+  14. Destructuring
+  15. Built-in Global Functions
+      15.1  I/O
+      15.2  Type Conversion & Queries
+      15.3  Math
+      15.4  String Functions
+      15.5  Array Functions
+      15.6  Sorting Algorithms
+      15.7  Search
+      15.8  JSON
+  16. Type-Specific Helpers
+      16.1  Float Helpers
+      16.2  Byte Helpers
+      16.3  Char Helpers
+      16.4  BigNum Helpers
+  17. Standard Libraries
+      17.1  @term  — Terminal I/O
+      17.2  $math  — Extended Math
+      17.3  $str   — String Utilities
+      17.4  $arr   — Array Utilities
+      17.5  $io    — I/O Helpers
+      17.6  $rand  — Random Utilities
+      17.7  $time  — Time Utilities
+      17.8  $bit   — Bitwise Operations
+      17.9  $conv  — Type Conversions
+  18. File Imports
+  19. Inline JavaScript (_medium @JS)
+  20. Special Statements
+  21. Quick Reference Card
+
+
+================================================================================
+  1. INTRODUCTION
+================================================================================
+
+ZETA++ (file extension: .zpp) is a custom scripting language with a clean,
+expressive syntax inspired by modern scripting languages. It features:
+
+  - Strong-but-flexible typing with 8 built-in data types
+  - Immutable constants (const / const const)
+  - Type aliases via renameDatatype()
+  - Rich standard libraries (@term, $math, $str, $arr, $io, $rand, $time,
+    $bit, $conv)
+  - Struct definitions with methods
+  - Enums with auto-incremented or manual values
+  - Pattern matching (match / on / else)
+  - Error handling (attempt / rescue / raise)
+  - Inline JavaScript interop (_medium @JS)
+  - File imports (#import)
+  - BigInt arithmetic via the bignum type
+  - A full suite of sorting algorithms and search functions built in
+
+
+================================================================================
+  2. RUNNING ZPP
+================================================================================
+
+ZPP programs are run via the Node.js interpreter:
+
+    node interpreter.js              # runs the built-in feature showcase
+    node interpreter.js myscript.zpp # runs your ZPP file
+
+Programmatic use (Node.js):
+
+    const { interpretDSALang } = require('./interpreter.js');
+    const output = interpretDSALang(code, [/* answers to input() calls */]);
+    console.log(output.join('\n'));
+
+
+================================================================================
+  3. COMMENTS
+================================================================================
+
+Single-line comments use //:
+
+    // This is a comment
+
+Block comments use /* ... */:
+
+    /*
+       This spans
+       multiple lines
+    */
+
+
+================================================================================
+  4. VARIABLES & DATA TYPES
+================================================================================
+
+4.1  BASIC TYPES
+----------------
+
+ZPP has six core declaration keywords:
+
+  Keyword   Description                          Default
+  -------   -----------                          -------
+  num       Numeric (integer or decimal)         0
+  str       String                               ""
+  bool      Boolean (true / false)               false
+  let       Any type / untyped                   null
+  set       Typed constant (must have a value)   (none)
+  array     Array of values                      []
+
+EXAMPLES:
+
+    num age = 25;
+    str name = "Alice";
+    bool active = true;
+    let anything = 42;
+    set num MAX = 100;           // constant, cannot be reassigned
+
+Multiple declarations in one line:
+
+    num x = 1, y = 2, z = 3;
+
+Declaration without an initial value (uses default):
+
+    num counter;                 // counter = 0
+    str message;                 // message = ""
+
+
+4.2  EXTENDED TYPES (float, byte, char, bignum)
+-----------------------------------------------
+
+FLOAT — Floating-point decimal number:
+
+    float pi = 3.14159;
+    float temp = -0.5;
+    // Enforces numeric storage; booleans auto-coerce (true→1.0, false→0.0)
+
+BYTE — 8-bit unsigned integer (auto-clamped to 0–255):
+
+    byte b = 200;
+    b = 300;    // automatically clamped → 255
+    b = -5;     // automatically clamped → 0
+    b = 65;     // stays 65
+
+CHAR — Single character:
+
+    char letter = "A";
+    letter = 66;   // numeric code auto-converts → "B"
+    // Always stores exactly one character; longer strings are truncated
+
+BIGNUM — Arbitrary-precision integer (BigInt-backed):
+
+    bignum huge = 9007199254740993;
+    bignum huge2 = 9007199254740993;
+    let result = huge + huge2;   // true BigInt arithmetic, no precision loss
+    // Displayed with trailing 'n': e.g. 18014398509481986n
+
+
+4.3  CONSTANTS (const, const const)
+------------------------------------
+
+CONST — Immutable binding (the variable cannot be reassigned):
+
+    const num PI = 3.14159;
+    const str GREETING = "Hello";
+    // PI = 0;  ← ERROR: Cannot reassign constant
+
+CONST CONST — Deep-frozen constant (arrays/objects are also frozen):
+
+    const const array PRIMES = [2, 3, 5, 7, 11];
+    // PRIMES cannot be reassigned, and its contents cannot be mutated
+
+Both levels work with any type:
+
+    const float gravity = 9.81;
+    const const str LANG = "ZPP";
+
+
+4.4  TYPE ALIASES — renameDatatype()
+-------------------------------------
+
+You can create aliases for type names, allowing you to use your own preferred
+keywords. Aliases are resolved at compile time (before execution) and can be
+chained.
+
+SYNTAX:
+    renameDatatype("existingType", "newAlias");
+
+EXAMPLES:
+
+    renameDatatype("num",   "int");
+    renameDatatype("str",   "string");
+    renameDatatype("int",   "integer");   // chains: "integer" → "num"
+
+    int age = 30;        // same as: num age = 30;
+    string name = "Bob"; // same as: str name = "Bob";
+    integer count = 5;   // chains through → num count = 5;
+
+NOTE: renameDatatype() also works at runtime for dynamic aliasing.
+
+
+================================================================================
+  5. STRING INTERPOLATION
+================================================================================
+
+Inside any string, use #varname or #(expression) to embed values:
+
+    num x = 10;
+    print("x is #x");              // prints: x is 10
+    print("double: #(x * 2)");     // prints: double: 20
+    print("type: #(typeOf(x))");   // prints: type: number
+
+Backtick strings support multi-line text and the same interpolation:
+
+    str msg = `Hello,
+    World!`;
+
+
+================================================================================
+  6. OPERATORS
+================================================================================
+
+ARITHMETIC:
+    +   Addition
+    -   Subtraction
+    *   Multiplication
+    /   Division
+    %   Modulo
+    **  Exponentiation (e.g. 2 ** 10 = 1024)
+
+COMPARISON:
+    ==  Equal
+    !=  Not equal
+    <   Less than
+    >   Greater than
+    <=  Less than or equal
+    >=  Greater than or equal
+
+LOGICAL:
+    &&  Logical AND
+    ||  Logical OR
+    !   Logical NOT
+
+BITWISE:
+    &   AND     |   OR      ^   XOR     ~   NOT
+    <<  Left shift          >>  Right shift
+
+ASSIGNMENT:
+    =   Assign
+    +=  Add and assign      -=  Subtract and assign
+    *=  Multiply and assign /=  Divide and assign
+    %=  Modulo and assign   &=  Bitwise AND assign
+    |=  Bitwise OR assign   ^=  Bitwise XOR assign
+
+INCREMENT / DECREMENT:
+    x++;    // same as x += 1
+    x--;    // same as x -= 1
+
+TERNARY (inline conditional):
+    let result = condition ? valueIfTrue : valueIfFalse;
+
+NUMERIC LITERALS:
+    42          decimal
+    3.14        decimal float
+    0xFF        hexadecimal
+    0b1010      binary
+
+EXAMPLES:
+
+    num a = 5, b = 3;
+    print(a + b);       // 8
+    print(a ** b);      // 125
+    print(a % b);       // 2
+    print(a > b);       // true
+
+
+================================================================================
+  7. CONTROL FLOW
+================================================================================
+
+7.1  IF / ELSE
+--------------
+
+    if condition {
+        // ...
+    } else if otherCondition {
+        // ...
+    } else {
+        // ...
+    }
+
+NOTE: No parentheses required around the condition.
+
+EXAMPLE:
+
+    num score = 85;
+    if score >= 90 {
+        print("A grade");
+    } else if score >= 75 {
+        print("B grade");
+    } else {
+        print("Below B");
+    }
+
+
+7.2  FOR ... IN ... TO (Numeric Range Loop)
+-------------------------------------------
+
+    for variable in start to end {
+        // body
+    }
+
+    for variable in start to end step N {
+        // body, increments by N each iteration
+    }
+
+EXAMPLES:
+
+    // Prints 1 through 5
+    for i in 1 to 5 {
+        print(i);
+    }
+
+    // Prints 0, 2, 4, 6, 8, 10
+    for i in 0 to 10 step 2 {
+        print(i);
+    }
+
+    // Count down
+    for i in 5 to 1 step -1 {
+        print(i);
+    }
+
+
+7.3  FOR EACH (Iterate Over Array)
+------------------------------------
+
+    for each item in collection {
+        // body
+    }
+
+EXAMPLE:
+
+    array fruits = ["apple", "banana", "cherry"];
+    for each fruit in fruits {
+        print(fruit);
+    }
+
+
+7.4  WHILE
+----------
+
+    while condition {
+        // body
+    }
+
+EXAMPLE:
+
+    num n = 1;
+    while n <= 5 {
+        print(n);
+        n++;
+    }
+
+
+7.5  REPEAT ... UNTIL (Do-While Equivalent)
+--------------------------------------------
+
+    repeat {
+        // body (executes at least once)
+    } until condition;
+
+EXAMPLE:
+
+    num count = 0;
+    repeat {
+        count++;
+        print(count);
+    } until count >= 3;
+
+
+7.6  BREAK / CONTINUE
+----------------------
+
+    break;      // exits the current loop
+    continue;   // skips to the next iteration
+
+EXAMPLE:
+
+    for i in 1 to 10 {
+        if i == 5 { break; }
+        if i % 2 == 0 { continue; }
+        print(i);   // prints 1, 3
+    }
+
+
+================================================================================
+  8. FUNCTIONS
+================================================================================
+
+8.1  DEFINING FUNCTIONS
+------------------------
+
+    func functionName(type paramName, ...) {
+        // body
+        return value;
+    }
+
+Type annotations on parameters are optional.
+
+EXAMPLES:
+
+    func greet(str name) {
+        print("Hello, #name!");
+    }
+    greet("Alice");
+
+    func add(num a, num b) {
+        return a + b;
+    }
+    print(add(3, 4));   // 7
+
+    func factorial(num n) {
+        if n <= 1 { return 1; }
+        return n * factorial(n - 1);
+    }
+    print(factorial(5));  // 120
+
+
+8.2  ANONYMOUS FUNCTIONS (fn / lambdas)
+----------------------------------------
+
+    fn(params) => expression
+    fn(params) { ... return value; }
+
+EXAMPLES:
+
+    let square = fn(x) => x * x;
+    print(square(5));   // 25
+
+    let nums = [3, 1, 4, 1, 5];
+    print(nums.findIndex(fn(x) => x > 3));  // 2
+
+
+8.3  DEFAULT PARAMETERS
+------------------------
+
+    func greet(str name = "World") {
+        print("Hello, #name!");
+    }
+    greet();           // Hello, World!
+    greet("ZETA");     // Hello, ZETA!
+
+
+8.4  VARIADIC PARAMETERS
+-------------------------
+
+    func sumAll(...nums) {
+        let total = 0;
+        for each n in nums {
+            total += n;
+        }
+        return total;
+    }
+    print(sumAll(1, 2, 3, 4, 5));   // 15
+
+
+8.5  EXPORTING FUNCTIONS
+-------------------------
+
+    export func funcName(params) { ... }
+
+    // Or export a list of already-defined names:
+    export { funcA, funcB };
+
+Exported functions are available when the file is imported as a namespace.
+
+
+================================================================================
+  9. STRUCTS
+================================================================================
+
+Structs define custom data types with named fields and optional methods.
+
+SYNTAX:
+
+    struct TypeName {
+        type fieldName;
+        ...
+        fn methodName(params) {
+            // 'this' refers to the struct instance
+        }
+    }
+
+EXAMPLE — Define a struct:
+
+    struct Point {
+        num x;
+        num y;
+        fn distance() {
+            return sqrt(this.x * this.x + this.y * this.y);
+        }
+    }
+
+Creating instances (C-style declaration):
+
+    Point p;           // default instance (fields = 0 or "")
+    Point p = { x: 3, y: 4 };
+    print(p.x);        // 3
+    print(p.distance());  // 5
+
+Creating an array of struct instances:
+
+    Point points[10];  // array of 10 default Point instances
+
+Accessing and modifying fields:
+
+    p.x = 10;
+    p.y = 20;
+
+Nested structs are also supported:
+
+    struct Line {
+        Point start;
+        Point end;
+    }
+    Line seg;
+    seg.start.x = 0;
+    seg.end.x = 5;
+
+
+================================================================================
+  10. ENUMS
+================================================================================
+
+Enums define named integer constants, optionally with explicit values.
+
+SYNTAX:
+
+    enum EnumName { KEY1 KEY2=value KEY3 ... }
+
+Auto-increments from 0 (or from the last explicit value + 1).
+
+EXAMPLE:
+
+    enum Direction { NORTH EAST SOUTH WEST }
+    print(Direction.NORTH);  // 0
+    print(Direction.WEST);   // 3
+
+    enum Status { OK=200 NOT_FOUND=404 ERROR=500 }
+    print(Status.OK);          // 200
+    print(Status.NOT_FOUND);   // 404
+
+    num code = Status.ERROR;
+    if code == Status.ERROR {
+        print("Server error!");
+    }
+
+
+================================================================================
+  11. PATTERN MATCHING (match)
+================================================================================
+
+match is ZPP's switch/case equivalent with cleaner syntax.
+
+SYNTAX:
+
+    match expression {
+        on value1 => { ... }
+        on value2 => { ... }
+        else      => { ... }
+    }
+
+EXAMPLE:
+
+    num day = 3;
+    match day {
+        on 1 => { print("Monday"); }
+        on 2 => { print("Tuesday"); }
+        on 3 => { print("Wednesday"); }
+        else => { print("Other day"); }
+    }
+
+    str color = "red";
+    match color {
+        on "red"   => { print("Stop"); }
+        on "green" => { print("Go"); }
+        on "yellow"=> { print("Caution"); }
+        else       => { print("Unknown color"); }
+    }
+
+
+================================================================================
+  12. ERROR HANDLING (attempt / rescue / raise)
+================================================================================
+
+ZPP uses attempt / rescue (instead of try / catch) and raise (instead of
+throw).
+
+SYNTAX:
+
+    attempt {
+        // code that may fail
+    } rescue errorVar {
+        // errorVar holds the error message/value
+    }
+
+    raise "something went wrong";
+
+EXAMPLE:
+
+    attempt {
+        num result = 10 / 0;
+        print(result);
+    } rescue err {
+        print("Caught error: #err");
+    }
+
+    func divide(num a, num b) {
+        if b == 0 { raise "Division by zero!"; }
+        return a / b;
+    }
+
+    attempt {
+        print(divide(10, 0));
+    } rescue e {
+        print("Error: #e");    // Error: Division by zero!
+    }
+
+
+================================================================================
+  13. ARRAYS
+================================================================================
+
+13.1  ARRAY DECLARATION
+------------------------
+
+    array myArr = [1, 2, 3, 4, 5];
+    array mixed = ["hello", 42, true];
+
+Access and assign by index:
+
+    print(myArr[0]);    // 1
+    myArr[2] = 99;
+
+Negative indexes via .at():
+
+    print(myArr.at(-1));   // last element
+
+
+13.2  ARRAY SHORTHAND
+----------------------
+
+Create an array of N zeros in one line:
+
+    array zeros = [5];    // [0, 0, 0, 0, 0]
+    array ten   = [10];   // [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+
+13.3  TYPED ARRAY INIT
+-----------------------
+
+Initialize an array with a specific element type and count:
+
+    array nums = [type="num", num=5];   // [0, 0, 0, 0, 0]
+
+This is useful for ensuring all elements have a consistent type.
+
+
+13.4  ARRAY METHODS
+--------------------
+
+All methods are called on the array with dot notation.
+
+ACCESSOR METHODS:
+    arr.at(index)          — element at index (supports negative)
+    arr.first(n)           — first N elements (or just first if n omitted)
+    arr.last(n)            — last N elements (or just last if n omitted)
+
+SEARCH / QUERY METHODS:
+    arr.findIndex(fn)      — index of first element where fn returns true (-1 if none)
+    arr.lastIndexOf(value) — last index of value (-1 if not found)
+    arr.includes(value)    — true if value exists (alias: global includes())
+
+TRANSFORMATION METHODS:
+    arr.sort()             — sorted copy (numbers numerically, strings alphabetically)
+    arr.fill(value)        — fill all slots with value
+    arr.flat(depth)        — flatten nested arrays
+    arr.dedupe()           — remove duplicate values
+    arr.compact()          — remove falsy values (0, false, null, "")
+    arr.reverse()          — reversed copy
+    arr.chunk(n)           — split into sub-arrays of size n
+    arr.rotate(n)          — rotate array left by n positions
+    arr.shuffle()          — random shuffle (returns new array)
+    arr.groupBy(fn)        — group elements by key returned from fn
+    arr.entries()          — array of [index, value] pairs
+
+AGGREGATION METHODS:
+    arr.sum()              — sum of all elements
+    arr.avg()              — average of all elements
+    arr.min()              — minimum value
+    arr.max()              — maximum value
+    arr.tally()            — count occurrences of each value (returns object)
+
+EXAMPLE:
+
+    array nums = [3, 1, 4, 1, 5, 9, 2, 6];
+    print(nums.sort());           // [1, 1, 2, 3, 4, 5, 6, 9]
+    print(nums.dedupe());         // [3, 1, 4, 5, 9, 2, 6]
+    print(nums.sum());            // 31
+    print(nums.avg());            // 3.875
+    print(nums.chunk(3));         // [[3,1,4],[1,5,9],[2,6]]
+    print(nums.rotate(2));        // [4, 1, 5, 9, 2, 6, 3, 1]
+    print(nums.tally());          // {3:1, 1:2, 4:1, 5:1, 9:1, 2:1, 6:1}
+    print(nums.findIndex(fn(x) => x > 5));  // 5
+
+    array mixed = [0, 1, false, 2, null, 3];
+    print(mixed.compact());       // [1, 2, 3]
+
+
+================================================================================
+  14. DESTRUCTURING
+================================================================================
+
+ARRAY DESTRUCTURING:
+
+    let [a, b, c] = [10, 20, 30];
+    print(a);   // 10
+    print(b);   // 20
+    print(c);   // 30
+
+OBJECT DESTRUCTURING:
+
+    let {x, y} = { x: 5, y: 9 };
+    print(x);   // 5
+    print(y);   // 9
+
+Works great with function returns:
+
+    func getCoords() {
+        return { x: 3, y: 7 };
+    }
+    let {x, y} = getCoords();
+
+
+================================================================================
+  15. BUILT-IN GLOBAL FUNCTIONS
+================================================================================
+
+15.1  I/O
+----------
+
+    print(value, ...)         Print one or more values, followed by a newline.
+    printsl(value, ...)       Print on the SAME LINE (no newline appended).
+    input(prompt)             Read user input. Returns a number if parseable,
+                              otherwise a string.
+    creator(text)             Display a decorated program metadata banner.
+
+EXAMPLE:
+
+    print("Hello, ZPP!");
+    printsl("Loading: ");
+    for i in 1 to 3 { printsl(i + "... "); }
+    print("done!");
+
+    creator("My ZPP Program v1.0");
+    // Renders a bordered banner with the creator text.
+
+
+15.2  TYPE CONVERSION & QUERIES
+--------------------------------
+
+    toNum(x)        Convert to number
+    toStr(x)        Convert to string
+    toBool(x)       Convert to boolean
+    toFloat(x)      Convert to float
+    toByte(x)       Convert to byte (clamped 0-255)
+    toChar(x)       Convert number to character
+    toBigNum(x)     Convert to bignum (BigInt)
+
+    isNum(x)        True if x is a number
+    isStr(x)        True if x is a string
+    isBool(x)       True if x is a boolean
+    isArr(x)        True if x is an array
+    isNull(x)       True if x is null or undefined
+    isStruct(x)     True if x is a struct instance
+    isFloat(x)      True if x is a floating-point number
+    isByte(x)       True if x is an integer in range 0-255
+    isChar(x)       True if x is a single character string
+    isBigNum(x)     True if x is a bignum (BigInt)
+    typeOf(x)       Returns type name as a string
+
+EXAMPLES:
+
+    print(typeOf(42));          // number
+    print(typeOf("hello"));     // string
+    print(typeOf([1,2]));       // array
+    print(isByte(200));         // true
+    print(isChar("A"));         // true
+    print(toChar(65));          // A
+
+
+15.3  MATH
+-----------
+
+    abs(x)            Absolute value
+    ceil(x)           Ceiling
+    floor(x)          Floor
+    round(x)          Round to nearest integer
+    sqrt(x)           Square root
+    pow(x, y)         x raised to power y
+    log(x)            Natural logarithm
+    log2(x)           Base-2 logarithm
+    log10(x)          Base-10 logarithm
+    sin(x)            Sine (radians)
+    cos(x)            Cosine (radians)
+    tan(x)            Tangent (radians)
+    asin(x)           Arc sine
+    acos(x)           Arc cosine
+    atan(x)           Arc tangent
+    atan2(y, x)       Two-argument arc tangent
+    hypot(x, y)       Hypotenuse
+    max(a, b, ...)    Maximum value (also accepts an array)
+    min(a, b, ...)    Minimum value (also accepts an array)
+    random()          Random float in [0, 1)
+    randomInt(a, b)   Random integer between a and b (inclusive)
+    calculate(expr)   Evaluate a math expression string safely
+
+    PI                Mathematical constant π (3.14159...)
+    E                 Mathematical constant e (2.71828...)
+    INF               Infinity
+
+EXAMPLE:
+
+    print(sqrt(25));             // 5
+    print(pow(2, 8));            // 256
+    print(randomInt(1, 6));      // random die roll
+    print(calculate("3 + 4 * 2")); // 11
+
+
+15.4  STRING FUNCTIONS
+-----------------------
+
+    len(x)                Length of string or array
+    upper(s)              Uppercase
+    lower(s)              Lowercase
+    trim(s)               Remove leading/trailing whitespace
+    split(s, delimiter)   Split string into array
+    join(arr, delimiter)  Join array elements into string
+    slice(x, a, b)        Slice string or array from a to b
+    substr(s, a, b)       Substring from index a to b
+    indexOf(x, val)       First index of val in x (-1 if not found)
+    includes(x, val)      True if val exists in x
+    replace(s, a, b)      Replace first occurrence of a with b
+    startsWith(s, prefix) True if s starts with prefix
+    endsWith(s, suffix)   True if s ends with suffix
+    repeat(s, n)          Repeat string n times
+    padLeft(s, n, char)   Pad string to width n from the left
+    padRight(s, n, char)  Pad string to width n from the right
+    charCode(s, i)        Character code of s[i]
+    fromChar(n)           Character from char code
+    format(s, ...args)    Template replacement: "{0} and {1}"
+
+EXAMPLES:
+
+    print(upper("hello"));          // HELLO
+    print(split("a,b,c", ","));     // ["a","b","c"]
+    print(join([1,2,3], " - "));    // 1 - 2 - 3
+    print(padLeft("5", 3, "0"));    // 005
+    print(format("{0} + {1}", 3, 4)); // 3 + 4
+
+
+15.5  ARRAY FUNCTIONS
+----------------------
+
+    range(start, end, step)  Generate array from start to end with step
+    fill(n, value)           Create array of n copies of value
+    sum(arr)                 Sum of elements
+    avg(arr)                 Average of elements
+    unique(arr)              Remove duplicates (alias: dedupe)
+    copy(arr)                Shallow copy
+    flat(arr, depth)         Flatten nested arrays
+    concat(a, b)             Concatenate two arrays
+    push(arr, ...vals)       Add to end (mutates in place)
+    pop(arr)                 Remove and return last element
+    shift(arr)               Remove and return first element
+    unshift(arr, val)        Add to beginning
+    splice(arr, i, d, ...)   Insert/remove at index
+    reverse(arr)             Reversed copy
+    sort(arr)                Sorted copy
+    sortDesc(arr)            Sorted descending copy
+    keys(obj)                Array of object keys
+    values(obj)              Array of object values
+    has(obj, key)            True if obj has key
+
+    compact(arr)             Remove falsy values
+    flatten(arr, depth)      Flatten (depth defaults to Infinity)
+    first(arr, n)            First element or first n elements
+    last(arr, n)             Last element or last n elements
+    nth(arr, n)              Element at position n (supports negative)
+    zip(a, b)                Pair elements: [[a0,b0],[a1,b1],...]
+    zipWith(a, b, fn)        Zip with transform function
+    chunk(arr, n)            Split into chunks of size n
+    rotate(arr, n)           Rotate left by n
+    shuffle(arr)             Random shuffle (new array)
+    tally(arr)               Count occurrences → object
+    dedupe(arr)              Remove duplicates
+    groupBy(arr, fn)         Group elements by key
+    partition(arr, fn)       Split into [matches, non-matches]
+    diff(a, b)               Elements in a not in b
+    intersect(a, b)          Elements in both a and b
+    union(a, b)              Unique elements from both arrays
+    matrix(rows, cols, val)  2D array filled with val
+    transpose(matrix)        Transpose a 2D array
+    product(a, b)            Cartesian product of two arrays
+    sample(arr, n)           Random sample of n elements
+    sortBy(arr, fn)          Sort by key function
+
+EXAMPLES:
+
+    print(range(1, 5));           // [1, 2, 3, 4, 5]
+    print(range(0, 10, 2));       // [0, 2, 4, 6, 8, 10]
+    print(zip([1,2,3],[4,5,6]));  // [[1,4],[2,5],[3,6]]
+    print(flatten([[1,[2]],[3]])); // [1, 2, 3]
+    print(dedupe([1,1,2,2,3]));   // [1, 2, 3]
+    print(chunk([1,2,3,4,5], 2)); // [[1,2],[3,4],[5]]
+    print(diff([1,2,3],[2,3]));   // [1]
+    print(intersect([1,2,3],[2,3,4])); // [2, 3]
+
+
+15.6  SORTING ALGORITHMS
+-------------------------
+
+ZPP ships with six named sorting functions (all return a new sorted array):
+
+    sort(arr)            Default sort (numbers numerically, strings alphabetically)
+    sortDesc(arr)        Descending sort
+    bubbleSort(arr)      Bubble sort
+    selectionSort(arr)   Selection sort
+    insertionSort(arr)   Insertion sort
+    mergeSort(arr)       Merge sort
+    quickSort(arr)       Quick sort
+    heapSort(arr)        Heap sort
+    countingSort(arr)    Counting sort (integers only)
+
+EXAMPLE:
+
+    array data = [5, 2, 8, 1, 9, 3];
+    print(bubbleSort(data));     // [1, 2, 3, 5, 8, 9]
+    print(mergeSort(data));      // [1, 2, 3, 5, 8, 9]
+    print(quickSort(data));      // [1, 2, 3, 5, 8, 9]
+
+
+15.7  SEARCH
+-------------
+
+    linearSearch(arr, target)   Linear scan; returns index or -1
+    binarySearch(arr, target)   Binary search (array must be sorted); returns index or -1
+    search(arr, target)         Alias for linearSearch
+
+EXAMPLE:
+
+    array sorted = [1, 3, 5, 7, 9];
+    print(binarySearch(sorted, 5));   // 2
+    print(linearSearch(sorted, 9));   // 4
+    print(binarySearch(sorted, 4));   // -1
+
+
+15.8  JSON
+-----------
+
+    toJSON(value)    Serialize any ZPP value to a JSON string
+    fromJSON(str)    Parse a JSON string into a ZPP value
+
+EXAMPLE:
+
+    let data = { name: "Alice", scores: [95, 87, 91] };
+    str json = toJSON(data);
+    print(json);                  // {"name":"Alice","scores":[95,87,91]}
+    let parsed = fromJSON(json);
+    print(parsed.name);           // Alice
+
+
+================================================================================
+  16. TYPE-SPECIFIC HELPERS
+================================================================================
+
+16.1  FLOAT HELPERS
+--------------------
+
+    fround(x)       Round to nearest 32-bit float
+    epsilon()       Returns Number.EPSILON (smallest representable difference)
+    isNaN(x)        True if x is NaN
+    isFinite(x)     True if x is finite
+    floatInfo(x)    Returns object: { value, isNaN, isInf, isInt, epsilon }
+
+EXAMPLE:
+
+    float f = 0.1 + 0.2;
+    print(isNaN(f));          // false
+    print(isFinite(f));       // true
+    print(toJSON(floatInfo(f)));
+    // {"value":0.30000000000000004,"isNaN":false,"isInf":false,"isInt":false,...}
+
+
+16.2  BYTE HELPERS
+-------------------
+
+    byteAdd(a, b)         Byte addition (result clamped to 0-255)
+    byteSub(a, b)         Byte subtraction (wraps, no negatives)
+    byteMul(a, b)         Byte multiplication (mod 256)
+    byteClamp(x, lo, hi)  Clamp x between lo and hi
+    byteFlip(x)           Bitwise NOT, result clamped to 0-255
+    byteInfo(x)           Returns { value, hex, bin } for x
+
+EXAMPLE:
+
+    print(byteAdd(200, 100));       // 255  (clamped)
+    print(byteSub(10, 20));         // 246  (wraps)
+    print(byteFlip(0));             // 255
+    print(toJSON(byteInfo(65)));    // {"value":65,"hex":"41","bin":"01000001"}
+
+
+16.3  CHAR HELPERS
+-------------------
+
+    charCode(c)         ASCII/Unicode code of character c
+    fromChar(n)         Character from code n
+    nextChar(c)         Next character (e.g. 'A' → 'B')
+    prevChar(c)         Previous character (e.g. 'B' → 'A')
+    isUpper(c)          True if c is uppercase letter
+    isLower(c)          True if c is lowercase letter
+    isAlpha(c)          True if c is a letter (a-z, A-Z)
+    isDigitChar(c)      True if c is a digit character ('0'-'9')
+    isSpace(c)          True if c is whitespace
+    upperChar(c)        Convert character to uppercase
+    lowerChar(c)        Convert character to lowercase
+    charRange(from, to) Array of characters from 'from' to 'to' inclusive
+
+EXAMPLE:
+
+    print(nextChar("A"));           // B
+    print(prevChar("z"));           // y
+    print(charRange("a", "e"));     // ["a","b","c","d","e"]
+    print(isUpper("Z"));            // true
+    print(isAlpha("5"));            // false
+    print(upperChar("q"));          // Q
+
+
+16.4  BIGNUM HELPERS
+---------------------
+
+    bigAdd(a, b)      BigInt addition
+    bigSub(a, b)      BigInt subtraction
+    bigMul(a, b)      BigInt multiplication
+    bigDiv(a, b)      BigInt integer division
+    bigMod(a, b)      BigInt modulo
+    bigPow(a, b)      BigInt exponentiation
+    bigCmp(a, b)      Compare: -1 if a<b, 0 if equal, 1 if a>b
+    bigAbs(n)         Absolute value of bignum
+    bigGcd(a, b)      Greatest common divisor
+    bigToStr(n)       Convert bignum to string
+    bigFromStr(s)     Parse string to bignum
+
+EXAMPLE:
+
+    bignum a = 9007199254740993;
+    bignum b = 9007199254740993;
+    print(bigAdd(a, b));              // 18014398509481986n
+    print(bigToStr(bigPow(2, 64)));   // 18446744073709551616
+    print(bigGcd(48, 18));            // 6
+    print(bigCmp(100, 200));          // -1
+
+
+================================================================================
+  17. STANDARD LIBRARIES
+================================================================================
+
+Libraries are accessed with @ (built-in) or $ (extended) prefixes followed by
+a dot and the function name.
+
+
+17.1  @term — TERMINAL I/O
+---------------------------
+
+    @term.print(...)      Print with newline
+    @term.printsl(...)    Print on same line (no newline)
+    @term.nl()            Print an empty line (newline only)
+    @term.warn(msg)       Print "[WARN] msg"
+    @term.error(msg)      Print "[ERROR] msg"
+    @term.clear()         Print 50 blank lines (simulates clear screen)
+    @term.input(prompt)   Read user input
+    @term.flush()         Flush the same-line buffer
+
+EXAMPLE:
+
+    @term.print("Hello from @term!");
+    @term.warn("Disk space low");
+    @term.error("Connection refused");
+    @term.nl();
+    @term.printsl("Progress: ");
+    for i in 1 to 5 { @term.printsl(i + " "); }
+    @term.nl();
+
+
+17.2  $math — EXTENDED MATH
+-----------------------------
+
+    $math.clamp(x, lo, hi)    Clamp x between lo and hi
+    $math.lerp(a, b, t)       Linear interpolation: a + (b-a)*t
+    $math.gcd(a, b)           Greatest common divisor
+    $math.lcm(a, b)           Least common multiple
+    $math.isPrime(n)           True if n is a prime number
+    $math.primes(n)            Array of all prime numbers up to n
+    $math.factorial(n)         n! (throws if negative)
+    $math.fibonacci(n)         nth Fibonacci number
+    $math.toHex(n)             Convert integer to hex string
+    $math.toBin(n)             Convert integer to binary string
+    $math.toOct(n)             Convert integer to octal string
+    $math.fromHex(s)           Parse hex string to integer
+    $math.fromBin(s)           Parse binary string to integer
+    $math.fromOct(s)           Parse octal string to integer
+    $math.toBase(n, base)      Convert to arbitrary base string
+    $math.fromBase(s, base)    Parse from arbitrary base
+    $math.sign(n)              -1, 0, or 1
+    $math.trunc(n)             Integer part (truncated)
+    $math.frac(n)              Fractional part
+    $math.cbrt(n)              Cube root
+    $math.exp(n)               e^n
+
+EXAMPLE:
+
+    print($math.isPrime(17));       // true
+    print($math.primes(20));        // [2,3,5,7,11,13,17,19]
+    print($math.factorial(6));      // 720
+    print($math.fibonacci(10));     // 55
+    print($math.toHex(255));        // ff
+    print($math.fromHex("ff"));     // 255
+    print($math.gcd(36, 48));       // 12
+    print($math.lerp(0, 100, 0.5)); // 50
+
+
+17.3  $str — STRING UTILITIES
+------------------------------
+
+    $str.reverse(s)           Reverse a string
+    $str.isPalindrome(s)      True if s reads the same forwards and backwards
+    $str.count(s, sub)        Count occurrences of sub in s
+    $str.toTitle(s)           Title Case Each Word
+    $str.toCamel(s)           Convert to camelCase
+    $str.toSnake(s)           Convert to snake_case
+    $str.template(s, obj)     Replace {key} placeholders from obj
+    $str.escape(s)            HTML-escape special characters
+    $str.isAlpha(s)           True if all characters are letters
+    $str.isDigit(s)           True if all characters are digits
+    $str.isAlnum(s)           True if all characters are letters or digits
+    $str.center(s, n, char)   Center s within width n, padded with char
+    $str.wrap(s, n)           Word-wrap at n characters
+    $str.lpad(s, n, c)        Left-pad to width n
+    $str.rpad(s, n, c)        Right-pad to width n
+    $str.between(s, a, b)     Extract substring between a and b
+    $str.repeat(s, n)         Repeat s n times
+    $str.normalize(s)         Trim and collapse whitespace
+
+EXAMPLE:
+
+    print($str.reverse("hello"));           // olleh
+    print($str.isPalindrome("racecar"));    // true
+    print($str.toTitle("hello world"));     // Hello World
+    print($str.toCamel("hello world"));     // helloWorld
+    print($str.toSnake("HelloWorld"));      // hello_world
+    print($str.template("Hi {name}!", { name: "Alice" }));  // Hi Alice!
+    print($str.count("banana", "a"));       // 3
+    print($str.center("ZPP", 9, "-"));      // ---ZPP---
+
+
+17.4  $arr — ARRAY UTILITIES
+------------------------------
+
+    $arr.zip(a, b)           Pair elements
+    $arr.flatten(a)          Flatten to depth Infinity
+    $arr.chunk(a, n)         Split into chunks
+    $arr.rotate(a, n)        Rotate left
+    $arr.shuffle(a)          Random shuffle
+    $arr.sample(a, n)        Pick n random elements
+    $arr.tally(a)            Count occurrences
+    $arr.partition(a, fn)    Split into [pass, fail]
+    $arr.matrix(r, c, v)     Create 2D array
+    $arr.transpose(m)        Transpose 2D array
+    $arr.product(a, b)       Cartesian product
+    $arr.groupBy(a, fn)      Group by key function
+    $arr.diff(a, b)          Elements in a but not b
+    $arr.intersect(a, b)     Elements in both
+    $arr.union(a, b)         All unique elements from both
+    $arr.sum(a)              Sum
+    $arr.avg(a)              Average
+    $arr.max(a)              Maximum
+    $arr.min(a)              Minimum
+
+EXAMPLE:
+
+    array evens = [2,4,6,8];
+    array odds  = [1,3,5,7];
+    print($arr.zip(evens, odds));             // [[2,1],[4,3],[6,5],[8,7]]
+    print($arr.product([1,2], ["a","b"]));    // [[1,"a"],[1,"b"],[2,"a"],[2,"b"]]
+    print(toJSON($arr.tally([1,2,1,3,2,1]))); // {"1":3,"2":2,"3":1}
+    print($arr.sum([1,2,3,4,5]));             // 15
+
+    let [passed, failed] = $arr.partition([1,2,3,4,5,6], fn(x) => x % 2 == 0);
+    print(passed);   // [2, 4, 6]
+    print(failed);   // [1, 3, 5]
+
+
+17.5  $io — I/O HELPERS
+------------------------
+
+    $io.print(...)      Print with newline
+    $io.printsl(...)    Print without newline
+    $io.input(prompt)   Read one line of input
+    $io.readLines(n)    Read n lines of input into an array
+    $io.flush()         Flush same-line buffer
+
+EXAMPLE:
+
+    $io.print("Enter your name:");
+    str name = $io.input("> ");
+    $io.print("Hello, #name!");
+
+
+17.6  $rand — RANDOM UTILITIES
+--------------------------------
+
+    $rand.int(min, max)          Random integer in [min, max]
+    $rand.float(min, max)        Random float in [min, max]
+    $rand.bool()                 Random true or false
+    $rand.pick(arr)              Pick a random element from array
+    $rand.shuffle(arr)           Shuffled copy of array
+    $rand.uuid()                 Generate a UUID v4 string
+    $rand.normal(mu, sigma)      Normal distribution sample
+    $rand.weighted(arr, weights) Weighted random selection
+
+EXAMPLE:
+
+    print($rand.int(1, 100));       // random integer 1-100
+    print($rand.bool());            // true or false
+    print($rand.pick(["a","b","c"])); // random element
+    print($rand.uuid());            // e.g. "a3f6c2d1-..."
+    print($rand.float(0.0, 1.0));   // e.g. 0.4823
+
+
+17.7  $time — TIME UTILITIES
+-----------------------------
+
+    $time.now()             Current timestamp in milliseconds
+    $time.format(ts, fmt)   Format timestamp using fmt placeholders:
+                            YYYY MM DD HH mm ss
+    $time.since(ts)         Milliseconds elapsed since timestamp ts
+    $time.toDate(ts)        Human-readable date string
+    $time.year()            Current year
+    $time.month()           Current month (1-12)
+    $time.day()             Current day of month
+
+EXAMPLE:
+
+    num start = $time.now();
+    // ... some work ...
+    num elapsed = $time.since(start);
+    print("Elapsed: #elapsed ms");
+    print($time.format(start, "YYYY-MM-DD HH:mm:ss"));
+    print("Year: " + $time.year());
+
+
+17.8  $bit — BITWISE OPERATIONS
+---------------------------------
+
+    $bit.and(a, b)       Bitwise AND
+    $bit.or(a, b)        Bitwise OR
+    $bit.xor(a, b)       Bitwise XOR
+    $bit.not(a)          Bitwise NOT
+    $bit.lsh(a, n)       Left shift
+    $bit.rsh(a, n)       Right shift (signed)
+    $bit.ursh(a, n)      Unsigned right shift
+    $bit.count(n)        Count set bits (popcount)
+    $bit.mask(n)         Bitmask of n ones: (1 << n) - 1
+    $bit.getBit(n, i)    Get bit at position i
+    $bit.setBit(n, i)    Set bit at position i
+    $bit.clrBit(n, i)    Clear bit at position i
+    $bit.togBit(n, i)    Toggle bit at position i
+
+EXAMPLE:
+
+    print($bit.and(0b1100, 0b1010));   // 8 (0b1000)
+    print($bit.or(0b1100, 0b1010));    // 14 (0b1110)
+    print($bit.lsh(1, 4));             // 16
+    print($bit.count(0b10110110));     // 5 (five 1-bits)
+    print($bit.mask(4));               // 15 (0b1111)
+
+
+17.9  $conv — TYPE CONVERSIONS
+--------------------------------
+
+    $conv.toFloat(x)       Parse to float
+    $conv.toByte(x)        Convert to byte (0-255)
+    $conv.toChar(n)        Code → character
+    $conv.fromChar(c)      Character → code
+    $conv.toBase(n, base)  Convert integer to string in given base
+    $conv.fromBase(s, b)   Parse string from given base
+    $conv.toBigNum(x)      Convert to BigInt
+    $conv.toHex(n)         To hex string with "0x" prefix
+    $conv.toBin(n)         To binary string with "0b" prefix
+    $conv.toOct(n)         To octal string with "0o" prefix
+    $conv.ord(s)           Character → ASCII code
+    $conv.chr(n)           ASCII code → character
+    $conv.boolToInt(b)     true→1, false→0
+    $conv.intToBool(n)     0→false, else→true
+
+EXAMPLE:
+
+    print($conv.toHex(255));           // 0xff
+    print($conv.toBin(10));            // 0b1010
+    print($conv.fromBase("ff", 16));   // 255
+    print($conv.ord("A"));             // 65
+    print($conv.chr(66));              // B
+    print($conv.boolToInt(true));      // 1
+
+
+================================================================================
+  18. FILE IMPORTS
+================================================================================
+
+ZPP supports importing other ZPP files or ZPP library files.
+
+PLAIN IMPORT (inline, merges into current scope):
+
+    #import["otherfile.zpp"];
+
+NAMESPACED IMPORT (isolates the file's exports under a namespace):
+
+    #import["utils.zpp": utils];
+    // Exported functions from utils.zpp are accessed as utils.funcName()
+
+LIBRARY IMPORT (.zl files — pre-registered DSA libraries):
+
+    #import["mylib.zl"];
+
+NOTE: Imports are resolved at compile time. Only .zpp and .zl extensions are
+supported.
+
+
+================================================================================
+  19. INLINE JAVASCRIPT (_medium @JS)
+================================================================================
+
+ZPP lets you embed raw JavaScript code blocks and import the resulting
+functions into the ZPP scope.
+
+SYNTAX:
+
+    _medium @JS -> {
+        // JavaScript code here
+        function myFunc(arg) { return ...; }
+        @export.funcName[myFunc, ...];
+    } -> result([@get.funcName(myFunc): zppAlias, ...]);
+
+  - @export.funcName[f1, f2]    declares which JS functions to export
+  - -> result(...)               binds them to ZPP variable names
+  - @get.funcName(jsName): alias maps jsName to a ZPP alias
+
+EXAMPLE:
+
+    _medium @JS -> {
+        function factorial(n) { return n <= 1 ? 1 : n * factorial(n-1); }
+        function greet(who) { return "Hello, " + who + "!"; }
+        @export.funcName[factorial, greet];
+    } -> result([@get.funcName(factorial): jsFactorial,
+                 @get.funcName(greet): jsGreet]);
+
+    print(jsGreet("ZPP"));       // Hello, ZPP!
+    print(jsFactorial(10));      // 3628800
+
+The JS block can also be used to execute code with no imports:
+
+    _medium @JS -> {
+        console.log("This runs in JS");
+    } -> result([]);
+
+
+================================================================================
+  20. SPECIAL STATEMENTS
+================================================================================
+
+LUCIFER IS THE LORD;
+    A power-signature statement. No functional effect — it's a ceremonial
+    declaration that can appear anywhere in a ZPP program.
+
+    LUCIFER IS THE LORD;
+
+creator(text)
+    Renders a decorative banner at the start of output.
+
+    creator("My Awesome ZPP App v2.0");
+
+renameDatatype(existing, alias)
+    Creates a type alias. Can appear at the top of a file or anywhere at
+    runtime. Compile-time occurrences are pre-processed before execution.
+
+    renameDatatype("num", "integer");
+
+
+================================================================================
+  21. QUICK REFERENCE CARD
+================================================================================
+
+--- TYPES ---------------------------------------------------------------
+  num      float    byte     char     bignum
+  str      bool     let      set      array
+
+--- DECLARATIONS --------------------------------------------------------
+  num x = 5;                   str name = "Bob";
+  bool flag = true;             let anything = null;
+  float pi = 3.14;              byte b = 128;
+  char c = "A";                 bignum n = 99999999999;
+  array arr = [1, 2, 3];        array zeros = [10];
+  const num MAX = 100;          const const array FIXED = [1,2,3];
+  set num CONSTANT = 42;
+
+--- CONTROL FLOW --------------------------------------------------------
+  if x > 0 { ... } else { ... }
+  for i in 1 to 10 { ... }
+  for i in 0 to 20 step 5 { ... }
+  for each item in arr { ... }
+  while x > 0 { ... }
+  repeat { ... } until done;
+  break;   continue;
+
+--- FUNCTIONS -----------------------------------------------------------
+  func name(type param, param2 = default) { return val; }
+  let f = fn(x) => x * x;
+  func variadic(...args) { ... }
+  export func publicFn() { ... }
+
+--- STRUCTS -------------------------------------------------------------
+  struct Point { num x; num y; fn dist() { return sqrt(x*x+y*y); } }
+  Point p = { x: 3, y: 4 };    p.x = 10;
+
+--- ENUMS ---------------------------------------------------------------
+  enum Color { RED GREEN BLUE }
+  enum Status { OK=200 ERR=500 }
+
+--- MATCH ---------------------------------------------------------------
+  match val { on 1 => { ... } on 2 => { ... } else => { ... } }
+
+--- ERROR HANDLING ------------------------------------------------------
+  attempt { risky(); } rescue e { print(e); }
+  raise "error message";
+
+--- LIBRARIES -----------------------------------------------------------
+  @term.print()   @term.warn()   @term.error()   @term.input()
+  $math.isPrime() $math.factorial() $math.fibonacci() $math.gcd()
+  $str.reverse()  $str.isPalindrome() $str.toTitle() $str.toCamel()
+  $arr.zip()      $arr.chunk()       $arr.partition() $arr.tally()
+  $rand.int()     $rand.pick()       $rand.uuid()
+  $time.now()     $time.format()     $time.since()
+  $bit.and()      $bit.or()          $bit.lsh()
+  $conv.toHex()   $conv.ord()        $conv.chr()
+
+--- SPECIAL ------------------------------------------------------------
+  LUCIFER IS THE LORD;
+  creator("Program Name");
+  renameDatatype("num", "int");
+  _medium @JS -> { ... } -> result([...]);
+  #import["file.zpp"];
+  #import["file.zpp": namespace];
+
+================================================================================
+  END OF DOCUMENTATION
+  ZETA++ (ZPP) v1.2.7
+================================================================================

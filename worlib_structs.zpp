@@ -1,0 +1,78 @@
+// worlib_structs.zpp — real ZPP structs that pair with worlib.zl.
+// Import this alongside worlib.zl if you want typed Point/Size/Rect/Color
+// values instead of passing raw numbers everywhere. Every wl_ function that
+// takes a position, size, or color accepts EITHER a struct from here OR
+// plain numbers — both work, this is purely for convenience.
+//
+//     #import["worlib.zl"];
+//     #import["worlib_structs.zpp"];
+//
+//     wl_Point pos = { x: 100, y: 80 };
+//     let win = wl_CreateWindow("My App", pos.x, pos.y, 400, 300);
+
+struct wl_Point {
+    num x;
+    num y;
+
+    fn distanceTo(other) {
+        num dx = this.x - other.x;
+        num dy = this.y - other.y;
+        return sqrt(dx * dx + dy * dy);
+    }
+
+    fn add(other) {
+        wl_Point r = { x: this.x + other.x, y: this.y + other.y };
+        return r;
+    }
+}
+
+struct wl_Size {
+    num w;
+    num h;
+
+    fn area() {
+        return this.w * this.h;
+    }
+}
+
+struct wl_Rect {
+    num x;
+    num y;
+    num w;
+    num h;
+
+    fn contains(pt) {
+        return pt.x >= this.x && pt.x <= this.x + this.w &&
+               pt.y >= this.y && pt.y <= this.y + this.h;
+    }
+
+    fn intersects(other) {
+        return this.x < other.x + other.w && this.x + this.w > other.x &&
+               this.y < other.y + other.h && this.y + this.h > other.y;
+    }
+
+    fn center() {
+        wl_Point p = { x: this.x + this.w / 2, y: this.y + this.h / 2 };
+        return p;
+    }
+}
+
+struct wl_Color {
+    num r;
+    num g;
+    num b;
+    num a;
+
+    fn toCSS() {
+        return "rgba(#this.r#,#this.g#,#this.b#,#this.a#)";
+    }
+}
+
+// A few ready-made colors so you don't have to spell out {r:0,g:0,b:0,a:1}
+// for common cases. Feel free to make your own the same way.
+wl_Color WL_BLACK = { r: 0,   g: 0,   b: 0,   a: 1 };
+wl_Color WL_WHITE = { r: 255, g: 255, b: 255, a: 1 };
+wl_Color WL_RED   = { r: 255, g: 0,   b: 0,   a: 1 };
+wl_Color WL_GREEN = { r: 0,   g: 200, b: 0,   a: 1 };
+wl_Color WL_BLUE  = { r: 0,   g: 0,   b: 255, a: 1 };
+wl_Color WL_GRAY  = { r: 192, g: 192, b: 192, a: 1 };

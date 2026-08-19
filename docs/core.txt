@@ -1,0 +1,140 @@
+============================================================
+ ZETA++ CORE BUILT-IN FUNCTIONS
+============================================================
+
+The Core library contains the fundamental functions available in ZETA++ without any imports. 
+
+------------------------------------------------------------
+IO & SYSTEM
+------------------------------------------------------------
+
+print(...args)
+Description: Prints one or more values to the output terminal.
+Snippet:
+    print("Result is: ", 42);
+
+input(prompt)
+Description: Displays a prompt and waits for user input. Returns a number if possible, otherwise a string.
+Snippet:
+    let name = input("Enter your name: ");
+
+toNum(x), toStr(x), toBool(x)
+Description: Explicit type conversion functions.
+Snippet:
+    num n = toNum("123");
+    str s = toStr(45.6);
+
+isNum(x), isStr(x), isBool(x), isArr(x), isNull(x), isStruct(x)
+Description: Type checking functions returning boolean.
+Snippet:
+    if isNum(42) { print("It is a number"); }
+
+typeOf(x)
+Description: Returns the type name of the value.
+Snippet:
+    print(typeOf([1, 2, 3])); // "array"
+
+------------------------------------------------------------
+MATHEMATICAL (BASIC)
+------------------------------------------------------------
+
+abs(x), ceil(x), floor(x), round(x), sqrt(x), pow(x, y)
+Description: Standard math operations.
+Snippet:
+    num result = sqrt(pow(3, 2) + pow(4, 2));
+
+log(x), log2(x), log10(x)
+Description: Logarithmic functions.
+Snippet:
+    num val = log10(100);
+
+sin(x), cos(x), tan(x), asin(x), acos(x), atan(x), atan2(y, x)
+Description: Trigonometric functions (radians).
+Snippet:
+    num s = sin(PI / 2);
+
+max(...), min(...)
+Description: Returns the maximum or minimum of values or an array.
+Snippet:
+    num largest = max(10, 5, 20, 15);
+
+random(), randomInt(min, max)
+Description: Generates random floating point [0-1) or integer between min and max.
+Snippet:
+    num roll = randomInt(1, 6);
+
+calculate(expression)
+Description: Safely evaluates a math string expression.
+Snippet:
+    num value = calculate("(10 + 5) * 2");
+
+------------------------------------------------------------
+STRINGS (CORE)
+------------------------------------------------------------
+
+len(x)
+Description: Length of a string or array.
+Snippet:
+    num length = len("Hello");
+
+upper(s), lower(s), trim(s)
+Description: Case conversion and whitespace trimming.
+Snippet:
+    str clean = lower(trim("  HELLO  "));
+
+split(s, delimiter), join(array, delimiter)
+Description: Split string into array or join array into string.
+Snippet:
+    let words = split("a,b,c", ",");
+
+slice(x, start, end), substr(s, start, end)
+Description: Extract sub-parts of strings or arrays.
+Snippet:
+    str part = slice("ZETA++", 0, 4);
+
+indexOf(x, val), includes(x, val)
+Description: Search for values in strings or arrays.
+Snippet:
+    if includes("abc", "b") { print("Found"); }
+
+format(template, ...args)
+Description: Replace {0}, {1} placeholders in a string.
+Snippet:
+    print(format("Hello {0}, you have {1} points", "Alice", 100));
+
+------------------------------------------------------------
+ARRAYS (CORE)
+------------------------------------------------------------
+
+range(start, end, step)
+Description: Generates an array of numbers.
+Snippet:
+    let nums = range(1, 10, 2);
+
+fill(count, value)
+Description: Create array with repeated values.
+Snippet:
+    let grid = fill(5, 0);
+
+sum(arr), avg(arr)
+Description: Calculates sum or average of numeric array.
+Snippet:
+    print(avg([10, 20, 30]));
+
+push(arr, val), pop(arr), shift(arr), unshift(arr, val)
+Description: Modify array contents.
+Snippet:
+    push(nums, 99);
+
+sort(arr), quickSort(arr), mergeSort(arr)
+Description: Sorting algorithms.
+Snippet:
+    let sorted = quickSort([5, 1, 9, 3]);
+
+binarySearch(arr, target)
+Description: Efficiently search sorted array.
+Snippet:
+    num pos = binarySearch(sorted, 9);
+
+
+

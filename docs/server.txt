@@ -1,0 +1,901 @@
+============================================================
+           SERVER.ZL LIBRARY DOCUMENTATION
+           For ZETA++ (ZPP) — Version 7.0 (Stable)
+============================================================
+
+  Import:  #import["server.zl"];
+  All functions are injected globally with the underscore (_) prefix.
+
+  Supported server types:
+    "http"        Plain HTTP server with routing and middleware
+    "https"       HTTPS (TLS) server (same API as HTTP)
+    "tcp"         Raw TCP socket server
+    "udp"         UDP datagram server
+    "ws"          WebSocket server (requires npm package "ws")
+    "minecraft"   Minecraft Java Edition server (1.8 – 1.18.2 built-in;
+                  1.19+ with manual join-game packet)
+
+============================================================
+  QUICK INDEX
+============================================================
+
+  1.  Server Factory ............. _make_server
+  2.  Server Lifecycle ........... _host, _stop
+  3.  HTTP Routing ............... _get _post _put _del _patch _any _route
+  4.  Middleware & Config ........ _middleware _cors _not_found _error_handler
+                                   _set_timeout _trust_proxy _static
+  5.  HTTP Response Helpers ....... _send _html _json _text _redirect
+                                    _set_header _file _stream_file
+  6.  HTTP Request Helpers ........ _body _body_json _query _param
+                                    _header_get _ip
+  7.  Events ...................... _on _off
+  8.  TCP / WS / MC Send .......... _send_to _broadcast _kick _send_packet
+  9.  UDP ......................... _udp_send
+  10. Minecraft Helpers ........... _set_motd _set_max_players _set_favicon
+                                    _mc_online_count _mc_broadcast_chat
+                                    _mc_kick_player _players
+                                    _set_mc_state _set_mc_username
+  11. Minecraft Protocol (low-level) _mc_make_packet _mc_parse_packet
+                                      _mc_write_string _mc_write_varint
+                                      _mc_read_varint
+  12. Utility ..................... _server_info _log_requests
+                                   _port_check _clients
+
+============================================================
+  1. SERVER FACTORY
+============================================================
+
+  _make_server() → server
+  ───────────────────────
+  Creates and returns a new server configuration object.
+  All fields have defaults; override before calling _host().
+
+  CORE FIELDS:
+    s.type    — Server type string.  Default: "http"
+    s.port    — Port to listen on.   Default: 8080  (MC auto-sets 25565)
+    s.host    — Bind address.        Default: "0.0.0.0"
+    s.logging — Log every request.   Default: false
+
+  HTTP / HTTPS FIELDS:
+    s._ssl_key_file   — Path to PEM private key (HTTPS only)
+    s._ssl_cert_file  — Path to PEM certificate (HTTPS only)
+
+  TCP FIELDS:
+    s._keep_alive       — Enable TCP keep-alive.    Default: true
+    s._no_delay         — Disable Nagle algorithm.  Default: true
+    s._max_connections  — Max simultaneous clients. Default: 0 (unlimited)
+
+  MINECRAFT FIELDS:
+    s._max_players         — Max players allowed.          Default: 20
+    s._motd                — Message of the Day.           Default: "A ZPP Server"
+    s._favicon             — Base64 PNG favicon string
+    s._version_name        — Version shown in list.        Default: "1.16.5"
+    s._protocol_version    — Minecraft protocol number.    Default: 754
+    s._online_mode         — Require Mojang auth.          Default: false
+    s._view_distance       — View distance in chunks.      Default: 10
+    s._simulation_distance — Simulation distance (1.17+).  Default: 10
+    s._join_game_packet    — Pre-built Join Game Buffer for 1.19+
+
+  EXAMPLE:
+    let s = _make_server();
+    s.type = "http";
+    s.port = 3000;
+
+============================================================
+  2. SERVER LIFECYCLE
+============================================================
+
+  _host(s, fn?)
+  ─────────────
+  Start the server. Calls fn(s) once it is listening.
+  The server type is read from s.type.
+
+  _stop(s, fn?)
+  ─────────────
+  Gracefully shut down the server and close all connections.
+  Calls fn() when complete.
+
+  EXAMPLE:
+    let s = _make_server();
+    s.type = "http";
+    s.port = 3000;
+    _host(s, fn() { print("Listening on port 3000"); });
+    // later...
+    _stop(s, fn() { print("Server stopped."); });
+
+============================================================
+  3. HTTP ROUTING
+============================================================
+
+  _route(s, method, path, fn)
+  ───────────────────────────
+  Register a route for a specific HTTP method and URL path.
+    method — "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "*"
+    path   — Exact string or pattern with :param segments.
+    fn     — fn(req, res) handler.
+
+  _get(s, path, fn)     Register a GET route.
+  _post(s, path, fn)    Register a POST route.
+  _put(s, path, fn)     Register a PUT route.
+  _del(s, path, fn)     Register a DELETE route.
+  _patch(s, path, fn)   Register a PATCH route.
+  _any(s, path, fn)     Register a route for any HTTP method.
+
+  PATH PARAMETERS:
+    Segments starting with : are captured as named parameters.
+    Retrieve them with _param(req, "name").
+    Example pattern: "/users/:id/posts/:pid"
+
+  EXAMPLES:
+    _get(s, "/", fn(req, res) {
+        _html(res, "<h1>Welcome!</h1>");
+    });
+
+    _get(s, "/user/:id", fn(req, res) {
+        let uid = _param(req, "id");
+        _json(res, { id: uid });
+    });
+
+    _post(s, "/echo", fn(req, res) {
+        _body(req, fn(raw) { _text(res, raw); });
+    });
+
+    _del(s, "/item/:id", fn(req, res) {
+        _json(res, { deleted: _param(req, "id") });
+    });
+
+    _any(s, "/ping", fn(req, res) { _text(res, "pong"); });
+
+============================================================
+  4. MIDDLEWARE & SERVER CONFIGURATION
+============================================================
+
+  _middleware(s, fn)
+  ──────────────────
+  Add a function that runs before every HTTP request.
+  fn(req, res, next) — call next() to continue the chain.
+  Not calling next() (and not sending a response) hangs the request.
+
+  EXAMPLE — API key guard:
+    _middleware(s, fn(req, res, next) {
+        if (_header_get(req, "x-api-key") == "secret") {
+            next();
+        } else {
+            _json(res, { error: "Unauthorized" }, 401);
+        }
+    });
+
+  _cors(s, origin?)
+  ─────────────────
+  Enable CORS headers on every response.
+    origin — specific origin string or "*" for all. Default: "*"
+
+  EXAMPLE:
+    _cors(s);                        // Allow all origins
+    _cors(s, "https://myapp.com");   // Restrict to one origin
+
+  _not_found(s, fn)
+  ─────────────────
+  Register a custom 404 handler.
+  fn(req, res)
+
+  EXAMPLE:
+    _not_found(s, fn(req, res) {
+        _html(res, "<h1>404 – Not Found</h1>", 404);
+    });
+
+  _error_handler(s, fn)
+  ──────────────────────
+  Register a custom error handler for uncaught route errors.
+  fn(err, req, res)
+
+  EXAMPLE:
+    _error_handler(s, fn(err, req, res) {
+        _json(res, { error: err.message }, 500);
+    });
+
+  _set_timeout(s, ms)
+  ───────────────────
+  Set a request/connection timeout in milliseconds.
+  Requests that exceed this time receive a 408 response.
+
+  EXAMPLE:
+    _set_timeout(s, 30000);  // 30 seconds
+
+  _trust_proxy(s, enable?)
+  ─────────────────────────
+  Make _ip() use X-Forwarded-For / X-Real-IP headers.
+  Enable when running behind Nginx, Cloudflare, or a load balancer.
+
+  EXAMPLE:
+    _trust_proxy(s);         // enable
+    _trust_proxy(s, false);  // disable
+
+  _static(s, dir, prefix?)
+  ─────────────────────────
+  Serve static files from a local directory.
+    dir    — Directory path, e.g. "./public"
+    prefix — URL mount point. Default: "/"
+
+  EXAMPLE:
+    _static(s, "./www");                // serves /index.html etc.
+    _static(s, "./uploads", "/files");  // serves /files/photo.jpg etc.
+
+============================================================
+  5. HTTP RESPONSE HELPERS
+============================================================
+
+  _send(res, status, body, headers?)
+  ────────────────────────────────────
+  Send a raw HTTP response with any status code.
+  All other response helpers call this internally.
+
+  EXAMPLE:
+    _send(res, 200, "OK");
+    _send(res, 403, "Forbidden", { "X-Reason": "ip-banned" });
+
+  _html(res, html, status?)
+  ──────────────────────────
+  Send an HTML response. Status defaults to 200.
+
+  EXAMPLE:
+    _html(res, "<h1>Hello!</h1>");
+    _html(res, "<h1>Oops</h1>", 500);
+
+  _json(res, obj, status?)
+  ─────────────────────────
+  Serialize an object to JSON and send it. Status defaults to 200.
+
+  EXAMPLE:
+    _json(res, { user: "Alice", age: 30 });
+    _json(res, { error: "Not found" }, 404);
+
+  _text(res, text, status?)
+  ──────────────────────────
+  Send a plain-text response. Status defaults to 200.
+
+  EXAMPLE:
+    _text(res, "pong");
+
+  _redirect(res, location, status?)
+  ──────────────────────────────────
+  Redirect the client. Default status: 302 (temporary).
+  Use 301 for permanent redirects.
+
+  EXAMPLE:
+    _redirect(res, "/login");
+    _redirect(res, "https://example.com", 301);
+
+  _set_header(res, name, value)
+  ──────────────────────────────
+  Set a custom response header.
+  Must be called BEFORE any response function.
+
+  EXAMPLE:
+    _set_header(res, "Cache-Control", "max-age=3600");
+    _set_header(res, "X-Powered-By", "ZPP");
+    _html(res, "<h1>Hello</h1>");
+
+  _file(res, filePath, status?)
+  ──────────────────────────────
+  Read a file from disk and send it. MIME type is auto-detected.
+  Sends 404 if the file does not exist.
+
+  EXAMPLE:
+    _file(res, "./public/index.html");
+    _file(res, "./downloads/report.pdf");
+
+  _stream_file(res, filePath, status?)
+  ──────────────────────────────────────
+  Stream a file from disk without loading it into memory.
+  Supports HTTP Range requests for video/audio seeking.
+  Preferred over _file() for large media files.
+
+  EXAMPLE:
+    _stream_file(res, "./videos/intro.mp4");
+
+============================================================
+  6. HTTP REQUEST HELPERS
+============================================================
+
+  _body(req, fn)
+  ──────────────
+  Asynchronously read the full request body as a raw string.
+  fn(rawString)
+
+  EXAMPLE:
+    _post(s, "/echo", fn(req, res) {
+        _body(req, fn(raw) {
+            _text(res, "You sent: " + raw);
+        });
+    });
+
+  _body_json(req, fn)
+  ────────────────────
+  Read the request body and parse it as JSON.
+  fn(data, error) — data is the parsed object; error is a string on failure.
+
+  EXAMPLE:
+    _post(s, "/user", fn(req, res) {
+        _body_json(req, fn(data, err) {
+            if (err) { _json(res, { error: err }, 400); return; }
+            _json(res, { created: data.name });
+        });
+    });
+
+  _query(req, name?)
+  ───────────────────
+  Get URL query string parameters.
+  Pass a name to get one value; omit to get all as an object.
+
+  EXAMPLE:
+    // URL: /search?q=hello&page=2
+    let term = _query(req, "q");    // → "hello"
+    let all  = _query(req);         // → { q: "hello", page: "2" }
+
+  _param(req, name)
+  ─────────────────
+  Get a named URL path parameter populated by the router.
+
+  EXAMPLE:
+    // Route: /post/:id/comment/:cid
+    // URL:   /post/99/comment/7
+    let id  = _param(req, "id");   // → "99"
+    let cid = _param(req, "cid");  // → "7"
+
+  _header_get(req, name)
+  ───────────────────────
+  Get a specific HTTP request header value (case-insensitive).
+
+  EXAMPLE:
+    let ct   = _header_get(req, "content-type");
+    let auth = _header_get(req, "authorization");
+
+  _ip(req)
+  ────────
+  Get the client's IP address.
+  Respects X-Forwarded-For when _trust_proxy is enabled.
+
+  EXAMPLE:
+    let ip = _ip(req);
+    print("Request from: " + ip);
+
+============================================================
+  7. EVENTS
+============================================================
+
+  _on(s, event, fn)
+  ──────────────────
+  Register an event listener on the server.
+
+  UNIVERSAL EVENTS (all server types):
+    "error"      fn(err)         — Server/socket error occurred
+    "close"      fn()            — Server has shut down
+
+  TCP / WS / MINECRAFT:
+    "connect"    fn(client)      — New connection established
+    "disconnect" fn(client)      — Connection closed
+    "data"       fn(client, buf) — Raw data received
+
+  WEBSOCKET:
+    "message"    fn(client, str) — UTF-8 message received
+
+  MINECRAFT:
+    "login"      fn(player)               — Username parsed; before PLAY
+    "join"       fn(player)               — Player entered PLAY state
+    "status"     fn(player, statusObj)    — Server list ping served
+    "packet"     fn(player, id, data)     — Every raw packet received
+
+  UDP:
+    "message"    fn(msgBuffer, remoteInfo) — Datagram received
+
+  _off(s, event, fn?)
+  ────────────────────
+  Remove a specific listener, or all listeners for an event.
+
+  EXAMPLE:
+    _off(s, "data", myHandler);  // remove one handler
+    _off(s, "data");             // remove all handlers
+
+============================================================
+  8. TCP / WS / MINECRAFT SEND HELPERS
+============================================================
+
+  _send_to(client, data)
+  ───────────────────────
+  Send data to a specific connected client.
+  Works for TCP sockets, WebSocket clients, and Minecraft players.
+
+  EXAMPLE:
+    // Echo server
+    _on(s, "data", fn(client, buf) { _send_to(client, buf); });
+
+  _broadcast(s, data, exclude?)
+  ──────────────────────────────
+  Send data to ALL connected clients.
+  Optionally skip one (e.g. the sender).
+
+  EXAMPLE:
+    _on(s, "message", fn(client, msg) {
+        _broadcast(s, client._id + ": " + msg, client);
+    });
+
+  _kick(s, client, reason?)
+  ──────────────────────────
+  Forcibly disconnect a client from any server type.
+
+  EXAMPLE:
+    if (bannedList includes client.address) {
+        _kick(s, client, "You are banned.");
+    }
+
+  _send_packet(client, data)
+  ───────────────────────────
+  Send raw binary packet data to a TCP or Minecraft client.
+  data — Buffer or byte array.
+
+  EXAMPLE:
+    _send_packet(player, [0x00, 0x2F, 0x01]);
+
+============================================================
+  9. UDP
+============================================================
+
+  _udp_send(s, data, port, address, fn?)
+  ────────────────────────────────────────
+  Send a UDP datagram from a running UDP server.
+  fn(err) is called on completion.
+
+  EXAMPLE:
+    _udp_send(s, "hello", 9001, "192.168.1.10");
+    _udp_send(s, "ping", 9001, "10.0.0.5", fn(err) {
+        if (err) { print("Send failed: " + err); }
+    });
+
+============================================================
+  10. MINECRAFT HELPERS
+============================================================
+
+  _set_motd(s, text)
+  ───────────────────
+  Set the Message of the Day shown in the Minecraft server list.
+  Supports Minecraft color codes (§a, §b, etc.).
+
+  EXAMPLE:
+    _set_motd(s, "§aWelcome to §bZPP Server!");
+
+  _set_max_players(s, n)
+  ───────────────────────
+  Set the maximum number of players allowed.
+
+  EXAMPLE:
+    _set_max_players(s, 20);
+
+  _set_favicon(s, filePath)
+  ──────────────────────────
+  Load a 64×64 PNG from disk and use it as the server list icon.
+
+  EXAMPLE:
+    _set_favicon(s, "./server-icon.png");
+
+  _mc_online_count(s)  → num
+  ──────────────────────────
+  Returns the count of players currently in PLAY state.
+
+  EXAMPLE:
+    print("Online: " + _mc_online_count(s) + "/" + s._max_players);
+
+  _mc_broadcast_chat(s, message, color?)
+  ────────────────────────────────────────
+  Send a chat message to all players in PLAY state.
+  color is a Minecraft color name string ("red", "yellow", etc.).
+
+  EXAMPLE:
+    _mc_broadcast_chat(s, "Server restarts in 60s!", "red");
+    _mc_broadcast_chat(s, "Welcome to the server!");
+
+  _mc_kick_player(s, player, reason?)
+  ─────────────────────────────────────
+  Kick a player and show a disconnect screen with the reason.
+
+  EXAMPLE:
+    _on(s, "join", fn(player) {
+        if (player.username == "griefer") {
+            _mc_kick_player(s, player, "You are banned.");
+        }
+    });
+
+  _players(s)  → object
+  ──────────────────────
+  Returns the map of all connected players.
+  Each entry: { id, socket, state, username, address, protocol }
+
+  EXAMPLE:
+    let all = _players(s);
+    for each pid in Object.keys(all) {
+        print(all[pid].username + " — " + all[pid].state);
+    }
+
+  _set_mc_state(player, state)
+  ─────────────────────────────
+  Manually set a player's connection state.
+  Valid states: "HANDSHAKE" | "STATUS" | "LOGIN" | "PLAY"
+
+  _set_mc_username(player, name)
+  ───────────────────────────────
+  Assign a username to a player object (after manual login parsing).
+
+============================================================
+  11. MINECRAFT PROTOCOL — LOW LEVEL
+============================================================
+
+  These are for advanced packet building. You typically only need
+  them if you are sending custom packets or handling raw packet data.
+
+  _mc_make_packet(packetId, data?)  → Buffer
+  ──────────────────────────────────────────
+  Build a VarInt-length-prefixed Minecraft packet.
+  packetId — integer packet ID.
+  data     — Buffer payload (without the packet ID byte).
+
+  EXAMPLE:
+    let pkt = _mc_make_packet(0x00, _mc_write_string("{\"text\":\"Hi!\"}"));
+    player.socket.write(pkt);
+
+  _mc_parse_packet(buf)  → { id, data, remaining } | null
+  ──────────────────────────────────────────────────────────
+  Extract one complete packet from a raw Buffer.
+  Returns null if the buffer does not yet contain a full packet.
+  Use 'remaining' as the new buffer for the next parse call.
+
+  EXAMPLE:
+    _on(s, "data", fn(player, buf) {
+        let pkt = _mc_parse_packet(buf);
+        if (pkt) { print("Packet id: " + pkt.id); }
+    });
+
+  _mc_write_string(str)   → Buffer
+  _mc_write_varint(val)   → Buffer
+  _mc_read_varint(buf, offset)  → { value, offset } | null
+  ──────────────────────────────────────────────────────────
+  Low-level Minecraft protocol encoding/decoding utilities.
+  Strings are encoded as VarInt(length) + UTF-8 bytes.
+
+  EXAMPLE:
+    let vbuf = _mc_write_varint(127);
+    let sbuf = _mc_write_string("minecraft:overworld");
+
+============================================================
+  12. UTILITY
+============================================================
+
+  _server_info(s)  → object
+  ──────────────────────────
+  Returns the server's current state as a plain object.
+  Fields: type, address, port, running, clients, players, routes, logging.
+
+  EXAMPLE:
+    let info = _server_info(s);
+    print(info.type + " on " + info.address + ":" + info.port);
+    print("Running: " + info.running + "  Clients: " + info.clients);
+
+  _log_requests(s, enable?)
+  ──────────────────────────
+  Toggle HTTP request logging.
+  Defaults to enabling when no argument is passed.
+
+  EXAMPLE:
+    _log_requests(s);         // enable
+    _log_requests(s, false);  // disable
+
+  _port_check(port, fn)
+  ──────────────────────
+  Check whether a port is free.
+  fn(isFree: boolean)
+
+  EXAMPLE:
+    _port_check(3000, fn(free) {
+        if (free) { print("Port 3000 is available!"); }
+        else      { print("Port 3000 is in use."); }
+    });
+
+  _clients(s)  → array
+  ─────────────────────
+  Returns the array of currently connected raw sockets/clients.
+  For Minecraft player detail objects, use _players(s) instead.
+
+============================================================
+  COMPLETE SETUP EXAMPLES
+============================================================
+
+------------------------------------------------------------
+  EXAMPLE A — FULL HTTP SERVER
+  A REST API with routing, middleware, CORS, 404, and errors.
+------------------------------------------------------------
+
+    #import["server.zl"];
+
+    let s = _make_server();
+    s.type = "http";
+    s.port = 3000;
+
+    // Enable CORS for all origins
+    _cors(s);
+
+    // Enable request logging
+    _log_requests(s);
+
+    // Auth middleware
+    _middleware(s, fn(req, res, next) {
+        let key = _header_get(req, "x-api-key");
+        if (key == "mysecretkey") {
+            next();
+        } else {
+            _json(res, { error: "Unauthorized" }, 401);
+        }
+    });
+
+    // Static files from ./public
+    _static(s, "./public");
+
+    // Routes
+    _get(s, "/", fn(req, res) {
+        _html(res, "<h1>ZPP HTTP Server</h1><p>It works!</p>");
+    });
+
+    _get(s, "/health", fn(req, res) {
+        let info = _server_info(s);
+        _json(res, { status: "ok", clients: info.clients });
+    });
+
+    _get(s, "/user/:id", fn(req, res) {
+        let uid = _param(req, "id");
+        _json(res, { id: uid, name: "User #uid" });
+    });
+
+    _get(s, "/search", fn(req, res) {
+        let q    = _query(req, "q");
+        let page = _query(req, "page");
+        _json(res, { query: q, page: page });
+    });
+
+    _post(s, "/user", fn(req, res) {
+        _body_json(req, fn(data, err) {
+            if (err) {
+                _json(res, { error: err }, 400);
+                return;
+            }
+            _json(res, { created: true, name: data.name }, 201);
+        });
+    });
+
+    _post(s, "/echo", fn(req, res) {
+        _body(req, fn(raw) {
+            _set_header(res, "X-Echo", "true");
+            _text(res, raw);
+        });
+    });
+
+    _del(s, "/user/:id", fn(req, res) {
+        _json(res, { deleted: _param(req, "id") });
+    });
+
+    // Redirect example
+    _get(s, "/old-page", fn(req, res) {
+        _redirect(res, "/", 301);
+    });
+
+    // Custom 404
+    _not_found(s, fn(req, res) {
+        _html(res, "<h1>404 — Page Not Found</h1>", 404);
+    });
+
+    // Custom error handler
+    _error_handler(s, fn(err, req, res) {
+        _json(res, { error: err.message }, 500);
+    });
+
+    // Start the server
+    _host(s, fn() {
+        print("HTTP server running on http://localhost:3000");
+    });
+
+
+------------------------------------------------------------
+  EXAMPLE B — MINECRAFT SERVER
+  Offline-mode Java Edition server (1.16.5 / protocol 754).
+  Supports server list ping, player join, chat broadcast, and kick.
+------------------------------------------------------------
+
+    #import["server.zl"];
+
+    let s = _make_server();
+    s.type             = "minecraft";
+    s.port             = 25565;
+    s._version_name    = "1.16.5";
+    s._protocol_version = 754;
+    s._online_mode     = false;  // offline mode (no Mojang auth)
+    s._view_distance   = 10;
+
+    // Server list appearance
+    _set_motd(s, "§6ZPP §aSurvival §7| §bOnline!");
+    _set_max_players(s, 20);
+    _set_favicon(s, "./server-icon.png");  // optional 64x64 PNG
+
+    // Banned players list
+    let banned = ["griefer99", "spammer"];
+
+    // Player connected (TCP handshake — before login)
+    _on(s, "connect", fn(player) {
+        print("Connection from: " + player.address);
+    });
+
+    // Player logged in (username is now available)
+    _on(s, "login", fn(player) {
+        print(player.username + " is logging in...");
+    });
+
+    // Player entered PLAY state
+    _on(s, "join", fn(player) {
+        // Kick banned players
+        if (banned includes player.username) {
+            _mc_kick_player(s, player, "You are banned from this server.");
+            return;
+        }
+
+        let count = _mc_online_count(s);
+        print(player.username + " joined! Online: " + count);
+
+        // Welcome message visible only from server console / events
+        _mc_broadcast_chat(s, player.username + " joined the game.", "yellow");
+    });
+
+    // Player disconnected
+    _on(s, "disconnect", fn(player) {
+        if (player.username) {
+            _mc_broadcast_chat(s, player.username + " left the game.", "gray");
+            print(player.username + " disconnected.");
+        }
+    });
+
+    // Raw packet event — handle chat (play-state packet 0x03)
+    _on(s, "packet", fn(player, id, data) {
+        if (player.state == "PLAY" and id == 0x03) {
+            // data begins with the chat string (VarInt-prefixed UTF-8)
+            let result = _mc_read_varint(data, 0);
+            if (result) {
+                let msgLen = result.value;
+                let msgOff = result.offset;
+                let msg    = data.slice(msgOff, msgOff + msgLen).toString("utf8");
+                print("<" + player.username + "> " + msg);
+                _mc_broadcast_chat(s, "<" + player.username + "> " + msg);
+            }
+        }
+    });
+
+    _on(s, "error", fn(err) {
+        print("Server error: " + err.message);
+    });
+
+    // Start
+    _host(s, fn() {
+        print("Minecraft server started on :25565");
+        print("Version: " + s._version_name + "  Protocol: " + s._protocol_version);
+    });
+
+    // Broadcast a message after 10 seconds
+    // (use your language's timer/interval if available)
+    // _mc_broadcast_chat(s, "Server has been running!", "green");
+
+
+------------------------------------------------------------
+  EXAMPLE C — CHAT MESSAGE SERVER (WebSocket)
+  Real-time multi-client chat using WebSocket.
+  Clients send plain text; server echoes to all other clients.
+  Requires "ws" npm package:  npm install ws
+------------------------------------------------------------
+
+    #import["server.zl"];
+
+    let s = _make_server();
+    s.type = "ws";
+    s.port = 8080;
+
+    // Map of clientId → username
+    let usernames = {};
+
+    _on(s, "connect", fn(client, req) {
+        usernames[client._id] = "Guest-" + client._id.slice(0, 5);
+        let name = usernames[client._id];
+        print(name + " connected.");
+        _send_to(client, "Welcome! You are " + name);
+        _broadcast(s, "*** " + name + " joined the chat. ***", client);
+    });
+
+    _on(s, "message", fn(client, msg) {
+        let name = usernames[client._id];
+
+        // Allow setting a username with /name <newname>
+        if (msg.startsWith("/name ")) {
+            let newName = msg.slice(6).trim();
+            usernames[client._id] = newName;
+            _send_to(client, "Your name is now: " + newName);
+            _broadcast(s, "*** " + name + " is now known as " + newName + " ***", client);
+            return;
+        }
+
+        // Broadcast message to all other clients
+        let formatted = "<" + name + "> " + msg;
+        print(formatted);
+        _broadcast(s, formatted, client);
+    });
+
+    _on(s, "disconnect", fn(client) {
+        let name = usernames[client._id];
+        if (name) {
+            print(name + " disconnected.");
+            _broadcast(s, "*** " + name + " left the chat. ***");
+        }
+        // Remove from map  (manual cleanup)
+    });
+
+    _on(s, "error", fn(err) {
+        print("WS error: " + err.message);
+    });
+
+    _host(s, fn() {
+        print("WebSocket chat server on ws://localhost:8080");
+        let info = _server_info(s);
+        print("Type: " + info.type + "  Port: " + info.port);
+    });
+
+============================================================
+  MIME TYPES AUTO-DETECTED BY _file() AND _stream_file()
+============================================================
+
+  .html .htm  → text/html
+  .css        → text/css
+  .js .mjs    → application/javascript
+  .json       → application/json
+  .txt .md    → text/plain
+  .xml        → application/xml
+  .svg        → image/svg+xml
+  .png        → image/png
+  .jpg .jpeg  → image/jpeg
+  .gif        → image/gif
+  .webp       → image/webp
+  .ico        → image/x-icon
+  .pdf        → application/pdf
+  .woff       → font/woff
+  .woff2      → font/woff2
+  .ttf        → font/ttf
+  .otf        → font/otf
+  .mp3        → audio/mpeg
+  .wav        → audio/wav
+  .ogg        → audio/ogg
+  .mp4        → video/mp4
+  .webm       → video/webm
+  .zip        → application/zip
+  .gz         → application/gzip
+  (other)     → application/octet-stream
+
+============================================================
+  MINECRAFT PROTOCOL VERSION REFERENCE
+============================================================
+
+  Protocol  Version      Built-in Support
+  ────────  ───────────  ─────────────────────────────────
+  ≤ 340     ≤ 1.12.2    Full (Join Game 0x23)
+  341–404   1.13.x       Full (Join Game 0x25)
+  477–578   1.14–1.15.2  Full (Join Game 0x26)
+  735–754   1.16.x       Full (dimension codec included)
+  755–756   1.17.x       Full (updated codec)
+  757–758   1.18.x       Full (min_y / height fields)
+  759+      1.19+        Status + Login work;
+                         set s._join_game_packet manually
+
+  Default config targets 1.16.5 / protocol 754.
+
+============================================================
+             END OF SERVER.ZL DOCUMENTATION
+============================================================

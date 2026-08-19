@@ -1,0 +1,57 @@
+ZETA CAMERA ENGINE - Technical Documentation
+=========================================
+
+Overview:
+The ZETA Camera Engine is a cross-platform library for vision and video processing. It provides a standard API similar to OpenCV for capturing, manipulating, and displaying video frames.
+
+CORE CLASSES
+------------
+
+1. Frame
+   Represents a single video frame with drawing and processing capabilities.
+   
+   - getData(): Returns the raw ImageData (Uint8ClampedArray).
+   - putData(imageData): Puts raw pixels back into the frame.
+   - gray(): In-place conversion to grayscale using luminance weighting.
+   - clone(): Returns a deep copy of the frame.
+   - toDataURL(type, quality): Exports the frame to a base64 string.
+
+2. VideoCapture
+   Manages the camera stream or video file source.
+   
+   - read(): Returns [success, Frame].
+   - setMode(mode, param): Sets real-time processing (e.g., COLOR, GRAY, CANNY).
+   - release(): Stops the camera and cleans up resources.
+   - startRecording(): Starts saving to WebM format.
+
+GLOBAL FUNCTIONS
+----------------
+
+- camera.createView(x, y, w, h, index):
+  Creates a UI-ready view widget.
+  Snippet:
+  const view = camera.createView(0, 0, 640, 480, 0);
+
+- camera.imshow(target, frame):
+  Renders a specific frame to a canvas or DOM element.
+
+- camera.absdiff(f1, f2):
+  Calculates the absolute difference between two frames. Excellent for motion detection.
+
+- camera.Canny(frame, low, high):
+  Applies the Sobel-based Canny edge detection algorithm.
+
+- camera.putText / putRect / putCircle:
+  Drawing primitives to annotate frames directly.
+
+EXAMPLE USAGE
+-------------
+const cap = camera.VideoCapture(0);
+camera.loop(() => {
+  const [ret, frame] = cap.read();
+  if (ret) {
+    camera.cvtColor(frame, 'gray');
+    camera.putText(frame, "TRACKING ACTIVE", 10, 30);
+    camera.imshow(myElement, frame);
+  }
+});

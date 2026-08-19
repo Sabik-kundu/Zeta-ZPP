@@ -1,0 +1,16 @@
+// hello.zpp — ZETA++ Hello World
+print("Hello from ZETA++!");
+
+str name = input("What is your name? ");
+print("Nice to meet you, " + name + "!");
+
+// A little math
+num x = 42;
+num y = 8;
+print("The answer is: " + x + " and " + y + " = " + (x + y));
+
+// Array + foreach
+let nums = [1, 2, 3, 4, 5];
+for each n in nums {
+  print("  " + n + " squared = " + (n * n));
+}

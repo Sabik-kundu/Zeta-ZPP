@@ -1,0 +1,193 @@
+#import["gui.zl"]
+
+view win   = Window(320, 520);
+view scene = Scene("open");
+win.setTitle("Calculator");
+win.setBackground("#1e1e2e");
+
+str  display    = "0";
+str  expression = "";
+bool freshNum   = true;
+bool hasError   = false;
+
+view exprLabel = Label("", 16, 16);
+exprLabel.setFont("monospace", 13);
+exprLabel.setColor("#6272a4");
+exprLabel.setSize(288, 20);
+exprLabel.setAlign("right-center");
+
+view dispLabel = Label("0", 16, 40);
+dispLabel.setFont("monospace", 36);
+dispLabel.setColor("#f8f8f2");
+dispLabel.setSize(288, 56);
+dispLabel.setAlign("right-center");
+
+view dispPanel = Panel(12, 12, 296, 100, "#282a36");
+dispPanel.setBorder("#44475a", 1);
+dispPanel.setRadius(10);
+dispPanel.add(exprLabel);
+dispPanel.add(dispLabel);
+
+func updateDisplay() {
+  dispLabel.setText(display);
+  exprLabel.setText(expression);
+  if hasError {
+    dispLabel.setColor("#ff5555");
+  } else {
+    dispLabel.setColor("#f8f8f2");
+  }
+}
+
+func pressDigit(d) {
+  hasError = false;
+  if freshNum {
+    display  = d;
+    freshNum = false;
+  } else {
+    if display == "0" && d != "." {
+      display = d;
+    } else {
+      if d == "." && includes(display, ".") { return; }
+      display = display + d;
+    }
+  }
+  updateDisplay();
+}
+
+func pressOp(op) {
+  hasError   = false;
+  expression = display + " " + op;
+  freshNum   = true;
+  updateDisplay();
+}
+
+func pressEqual() {
+  if expression == "" { return; }
+  str full   = expression + " " + display;
+  expression = full + " =";
+  attempt {
+    num result = calculate(full);
+    if result == floor(result) {
+      display = toStr(round(result));
+    } else {
+      display = toStr(round(result * 1000000) / 1000000);
+    }
+    hasError = false;
+  } rescue e {
+    display  = "Error";
+    hasError = true;
+  }
+  freshNum = true;
+  updateDisplay();
+}
+
+func pressClear() {
+  display    = "0";
+  expression = "";
+  freshNum   = true;
+  hasError   = false;
+  updateDisplay();
+}
+
+func pressBack() {
+  if hasError { pressClear(); return; }
+  if len(display) <= 1 {
+    display = "0";
+  } else {
+    display = substr(display, 0, len(display) - 1);
+  }
+  updateDisplay();
+}
+
+func pressSign() {
+  if hasError { return; }
+  if display != "0" {
+    if startsWith(display, "-") {
+      display = substr(display, 1, len(display));
+    } else {
+      display = "-" + display;
+    }
+    updateDisplay();
+  }
+}
+
+func pressPercent() {
+  if hasError { return; }
+  attempt {
+    display = toStr(toNum(display) / 100);
+    updateDisplay();
+  } rescue e { }
+}
+
+set BTN_W   = 64;
+set BTN_H   = 64;
+set BTN_GAP = 8;
+set GRID_X  = 12;
+set GRID_Y  = 128;
+
+func makeBtn(label, col, row, fg, bg) {
+  num x = GRID_X + col * (BTN_W + BTN_GAP);
+  num y = GRID_Y + row * (BTN_H + BTN_GAP);
+  view b = Button(label, x, y, BTN_W, BTN_H);
+  b.setColor(fg, bg);
+  b.setFontSize(20);
+  b.setRadius(10);
+  return b;
+}
+
+view btnC    = makeBtn("C",   0, 0, "#1e1e2e", "#ff5555");
+view btnSign = makeBtn("+/-", 1, 0, "#1e1e2e", "#6272a4");
+view btnPct  = makeBtn("%",   2, 0, "#1e1e2e", "#6272a4");
+view btnDiv  = makeBtn("÷",   3, 0, "#1e1e2e", "#bd93f9");
+
+view btn7    = makeBtn("7",   0, 1, "#f8f8f2", "#44475a");
+view btn8    = makeBtn("8",   1, 1, "#f8f8f2", "#44475a");
+view btn9    = makeBtn("9",   2, 1, "#f8f8f2", "#44475a");
+view btnMul  = makeBtn("×",   3, 1, "#1e1e2e", "#bd93f9");
+
+view btn4    = makeBtn("4",   0, 2, "#f8f8f2", "#44475a");
+view btn5    = makeBtn("5",   1, 2, "#f8f8f2", "#44475a");
+view btn6    = makeBtn("6",   2, 2, "#f8f8f2", "#44475a");
+view btnSub  = makeBtn("−",   3, 2, "#1e1e2e", "#bd93f9");
+
+view btn1    = makeBtn("1",   0, 3, "#f8f8f2", "#44475a");
+view btn2    = makeBtn("2",   1, 3, "#f8f8f2", "#44475a");
+view btn3    = makeBtn("3",   2, 3, "#f8f8f2", "#44475a");
+view btnAdd  = makeBtn("+",   3, 3, "#1e1e2e", "#bd93f9");
+
+view btnBack = makeBtn("⌫",   0, 4, "#f8f8f2", "#44475a");
+view btn0    = makeBtn("0",   1, 4, "#f8f8f2", "#44475a");
+view btnDot  = makeBtn(".",   2, 4, "#f8f8f2", "#44475a");
+view btnEq   = makeBtn("=",   3, 4, "#1e1e2e", "#50fa7b");
+
+btn0.listen("click",    fn() { pressDigit("0"); });
+btn1.listen("click",    fn() { pressDigit("1"); });
+btn2.listen("click",    fn() { pressDigit("2"); });
+btn3.listen("click",    fn() { pressDigit("3"); });
+btn4.listen("click",    fn() { pressDigit("4"); });
+btn5.listen("click",    fn() { pressDigit("5"); });
+btn6.listen("click",    fn() { pressDigit("6"); });
+btn7.listen("click",    fn() { pressDigit("7"); });
+btn8.listen("click",    fn() { pressDigit("8"); });
+btn9.listen("click",    fn() { pressDigit("9"); });
+btnDot.listen("click",  fn() { pressDigit("."); });
+
+btnAdd.listen("click",  fn() { pressOp("+"); });
+btnSub.listen("click",  fn() { pressOp("-"); });
+btnMul.listen("click",  fn() { pressOp("*"); });
+btnDiv.listen("click",  fn() { pressOp("/"); });
+
+btnEq.listen("click",   fn() { pressEqual(); });
+btnC.listen("click",    fn() { pressClear(); });
+btnBack.listen("click", fn() { pressBack(); });
+btnSign.listen("click", fn() { pressSign(); });
+btnPct.listen("click",  fn() { pressPercent(); });
+
+scene.add(dispPanel);
+scene.add(btnC);     scene.add(btnSign);  scene.add(btnPct);   scene.add(btnDiv);
+scene.add(btn7);     scene.add(btn8);     scene.add(btn9);     scene.add(btnMul);
+scene.add(btn4);     scene.add(btn5);     scene.add(btn6);     scene.add(btnSub);
+scene.add(btn1);     scene.add(btn2);     scene.add(btn3);     scene.add(btnAdd);
+scene.add(btnBack);  scene.add(btn0);     scene.add(btnDot);   scene.add(btnEq);
+
+win.setScene(scene);
